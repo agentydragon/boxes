@@ -31,23 +31,44 @@ COLORS = [
 ]
 
 
-def shift_bbox(bbox, x, y):
-    minx, miny, maxx, maxy = bbox
-    return minx + x, miny + y, maxx + x, maxy + y
-
-
-def combine_bboxes(bboxes):
-    minx = min(minx for minx, _, _, _ in bboxes)
-    miny = min(miny for _, miny, _, _ in bboxes)
-    maxx = max(maxx for _, _, maxx, _ in bboxes)
-    maxy = max(maxy for _, _, _, maxy in bboxes)
-    return minx, miny, maxx, maxy
-
-
 # class HalfFingerEdge(FingerJointEdge):
 #    def fingerLength(self, angle: float) -> tuple[float, float]:
 #        length, recess = super().fingerLength(angle)
 #        return length / 2, recess
+
+
+@dataclasses.dataclass
+class BBox:
+    minx: float
+    miny: float
+    maxx: float
+    maxy: float
+
+    @property
+    def width(self):
+        return self.maxx - self.minx
+
+    @property
+    def height(self):
+        return self.maxy - self.miny
+
+    def shift(self, x, y):
+        return BBox(
+            minx=self.minx + x,
+            miny=self.miny + y,
+            maxx=self.maxx + x,
+            maxy=self.maxy + y,
+        )
+
+    @staticmethod
+    def combine(bboxes):
+        bboxes = list(bboxes)
+        return BBox(
+            minx=min(b.minx for b in bboxes),
+            miny=min(b.miny for b in bboxes),
+            maxx=max(b.maxx for b in bboxes),
+            maxy=max(b.maxy for b in bboxes),
+        )
 
 
 class MailRack(Boxes):
@@ -78,14 +99,6 @@ class MailRack(Boxes):
     ANGLED_NEG = "B"
 
     def render(self):
-        # w = WallBuilder(self)
-        # d = 43.30127018922193
-        # w.add(20, 60, "e")
-        # w.add(d, 120, "f")
-        # w.add(20, 60, "e")
-        # w.add(d, 90, "F")
-        # w.render()
-        ## edge called with 43.30127018922193
         s = FingerJointSettings(
             relative=True,
             thickness=self.thickness,
@@ -95,16 +108,20 @@ class MailRack(Boxes):
         self.edges[self.ANGLED_POS] = FingerJointEdge(self, s)
         self.edges[self.ANGLED_NEG] = FingerJointEdgeCounterPart(self, s)
 
-        # self.back(move="right")
+        self.back(move="right")  # <- ok
+
+        # self.floor(move="down") <- floor/back joint OK
+        self.outer_side(move="right")
+
         # for i in range(len(self.sx) + 1):
         #    move = "right"
         #    if i == len(self.sx):
         #        move += " up"
         #    self.outer_side(move=move)
-        # self.floor(move="left")
-        self.floor_pieces(move="left")
-        self.hole(0, 0, 3)
-        # self.front_pieces(move="left")
+
+        # self.floor_pieces(move="up")
+        # self.front_pieces(move="up")
+
         # self.first_front(move="left")
 
     def show_cc(self, i):
@@ -135,30 +152,43 @@ class MailRack(Boxes):
 
     def outer_side(self, move):
         w = WallBuilder(self)
-        w.add((self.floor_depth / 2, self.floor_depth / 2), self.angle_deg, "F")
-        w.add(self.front_length, 90, "f")
-        for sh in self.sh:
-            w.add(sh * self.cos_a, -90, "e")
-            d = sh * self.sin_a
-            w.add(d, 90, "F")
-            print(f"{d = }")
-        w.add(float(w.current[0]) / self.sin_a, 180 - self.angle_deg, "e")
-        w.add(reversed(self.sh_effective), 0, "f")
-        with self.moved(move=move, bbox=w.bbox(), label="outer_side"):
+        edge = "e"  # "f"
+        w.add((self.floor_depth / 2, self.floor_depth / 2), self.angle_deg, "e")  # "F")
+        w.add(self.front_length, 90, "e")  # "f")
+        for i, sh in enumerate(self.sh):
+            sh2 = sh + self.thickness
+            if i == 0:
+                sh2 += 0.5 * self.thickness
+            w.add(sh2 * self.cos_a, -90, "e")
+            w.add(sh2 * self.sin_a, 90, edge)
+        w.add(
+            float(w.current[0]) / self.sin_a,  # + (self.cos_a * self.thickness / 2),
+            180 - self.angle_deg,
+            "e",
+        )
+        w.surround(
+            reversed(self.sh_effective), 0, "e", self.thickness, "e"  # "f",
+        )  # <- side towards front
+
+        with self.moved(move=move, bbox=w.bbox, label="outer_side"):
             # self.hole(w.current[0], w.current[1], 3)
             with self.saved_context():
-                self.moveTo(0, self.thickness)  # <--- fix this
-                for h in self.sh:
-                    self.moveTo(0, h)
+                self.moveTo(0, self.thickness / 2)  # <--- fix this
+                for i, sh in enumerate(self.sh):
+                    self.moveTo(0, sh)
+                    self.moveTo(0, self.thickness)
                     with self.saved_context():
                         self.fingerHolesAt(0, 0, self.floor_depth / 2, 0)
                         self.fingerHolesAt(
                             self.floor_depth / 2, 0, self.floor_depth / 2, 0
                         )
+                        sh2 = sh + self.thickness
+                        if i == 0:
+                            sh2 += 2 * self.thickness
                         self.fingerHolesAt(
                             self.floor_depth,
                             0,
-                            self.front_length - self.sin_a * (sh + self.thickness),
+                            self.front_length,  # - self.sin_a * sh2,
                             self.angle_deg,
                         )
 
@@ -166,71 +196,60 @@ class MailRack(Boxes):
 
     def floor(self, move):
         w = WallBuilder(self)
-        w.add(self.sx, 90, self.ANGLED_NEG)  # <- side towards front
-        w.add((self.floor_depth / 2, self.floor_depth / 2), 90, "f")
-        w.add(reversed(self.sx), 90, edge="f")
-        w.add((self.floor_depth / 2, self.floor_depth / 2), 0, "f")
+        w.surround(
+            self.sx, 90, self.ANGLED_NEG, self.thickness, "e"
+        )  # <- side towards front
+        d = self.floor_depth / 2
+        w.add((d, d), 90, "f")
+        w.surround(reversed(self.sx), 90, "f", self.thickness, "e")
+        w.add((d, d), 0, "f")
 
-        with self.moved(move=move, bbox=w.bbox(), label="floor"):
+        self.moveTo(-self.thickness, 0)
+        with self.moved(move=move, bbox=w.bbox, label="floor"):
 
             with self.saved_context():
+                self.moveTo(self.thickness * 1.5, 0)
                 for x in self.sx[:-1]:
                     self.fingerHolesAt(x, 0, self.floor_depth, 90)
                     self.moveTo(x, 0)
+                    self.moveTo(self.thickness, 0)
             w.render(callback=self.show_cc, turtle=True)
 
+    def _floor_piece(self, x, i):
+        w = WallBuilder(self)
+        d = self.floor_depth / 2
+        w.add(x, 90, "f")
+        w.add(d, 0, ("f" if i == len(self.sx) - 1 else "e"))
+        w.add(d, 90, "f")
+        w.add(x, 90, self.ANGLED_NEG)  # <- side towards front
+        w.add(d, 0, ("f" if i == 0 else "e"))
+        w.add(d, 90, "f")
+        return w
+
     def floor_pieces(self, move):
-        # edges = self.get_edges()
-        # edges = [self.boxes.edges[e] for e in edges]
-        # borders = self.boxes._closePolygon(self.get_borders())
-        # minx, miny, maxx, maxy = self.boxes._polygonWallExtend(borders, edges)
-        # return minx, miny, maxx, maxy
-
-        elements = []
-
-        yshift = 0
+        elems = []
+        dy = 0
         for j in range(len(self.sh)):
-            xshift = 0
-            row_elements = []
+            dx = 0
+            row = []
             for i, x in enumerate(self.sx):
-                w = WallBuilder(self)
-                w.add(x, 90, self.ANGLED_NEG)  # <- side towards front
-                w.add(self.floor_depth / 2, 0, ("f" if i == len(self.sx) - 1 else "e"))
-                w.add(self.floor_depth / 2, 90, "f")
-                w.add(x, 90, "f")
-                w.add(self.floor_depth / 2, 0, ("f" if i == 0 else "e"))
-                w.add(self.floor_depth / 2, 90, "f")
-                minx, miny, maxx, maxy = w.bbox()
-                print(f"{minx=} {miny=} {maxx=} {maxy=}")
-
-                row_elements.append((xshift, yshift, w))
-                # with self.saved_context():
-                #    self.moveTo(xshift, yshift)
-                #    with self.saved_context():
-                #        self.moveTo(-minx, -miny)
-                #        w.render(callback=self.show_cc, turtle=True)
-
+                w = self._floor_piece(x, i)
+                row.append(w.to_element(dx, dy))
                 # sligthly overlap - we can do this
-                xshift += maxx - minx - self.thickness * 0.7
+                dx += w.bbox.width
 
-            row_bboxes = [
-                shift_bbox(w.bbox(), xshift, yshift)
-                for xshift, yshift, w in row_elements
-            ]
-            maxy = max(maxy for _, _, _, maxy in row_bboxes)
-            miny = min(miny for _, miny, _, _ in row_bboxes)
-            elements.extend(row_elements)
-            yshift += maxy - miny + self.spacing
+                # dx -= self.thickness  # <- fully tight
+                # dx -= self.thickness * 0.7
 
-        bboxes = [
-            shift_bbox(w.bbox(), xshift, yshift) for xshift, yshift, w in elements
-        ]
-        combined_bbox = combine_bboxes(bboxes)
-        with self.moved(move=move, bbox=combined_bbox):
-            for xshift, yshift, w in elements:
+            row_bbox = BBox.combine(b for _, b, _ in row)
+            elems.extend(row)
+            dy += row_bbox.height + self.spacing
+
+        with self.moved(move=move, bbox=BBox.combine(b for _, b, _ in elems)):
+            for (dx, dy), _, elem in elems:
                 with self.saved_context():
-                    self.moveTo(xshift, yshift)
-                    w.render(callback=self.show_cc, turtle=True)
+                    self.moveTo(dx, dy)
+                    elem()
 
     def first_front(self, move):
         w = WallBuilder(self)
@@ -239,7 +258,7 @@ class MailRack(Boxes):
         w.add(reversed(self.sx), 90, self.ANGLED_POS)
         w.add(self.front_length, 90, "F")
 
-        with self.moved(move=move, bbox=w.bbox(), label="first_front"):
+        with self.moved(move=move, bbox=w.bbox, label="first_front"):
             w.render(callback=self.show_cc, turtle=True)
 
             with self.saved_context():
@@ -247,26 +266,44 @@ class MailRack(Boxes):
                     self.moveTo(x, 0)
                     self.fingerHolesAt(0, 0, self.front_length, 90)
 
+    def _front_piece(self, sh, x, j):
+        w = WallBuilder(self)
+        a = sh * self.sin_a
+        b = self.front_length - a
+        print(f"{a = }")
+        w.add(x, 90, "e")
+        w.add(a, 0, ("f" if j == len(self.sx) - 1 else "e"))
+        w.add(b, 90, "f")
+        w.add(x, 90, self.ANGLED_POS)
+        w.add(b, 0, ("f" if j == 0 else "e"))
+        w.add(a, 90, "f")
+        return w
+
     def front_pieces(self, move):
 
         # TODO: include self.angle for floor-front joint
         # (here and also in floor)
 
+        elems = []
+        dy = 0
         for i, sh in enumerate(self.sh):
+            dx = 0
+            row = []
             for j, x in enumerate(self.sx):
-                w = WallBuilder(self)
-                a = sh * self.sin_a
-                b = self.front_length - a
-                print(f"{a = }")
-                w.add(x, 90, "e")
-                w.add(a, 0, ("f" if j == len(self.sx) - 1 else "e"))
-                w.add(b, 90, "f")
-                w.add(x, 90, self.ANGLED_POS)
-                w.add(b, 0, ("f" if j == 0 else "e"))
-                w.add(a, 90, "f")
+                w = self._front_piece(sh, x, j)
+                row.append(w.to_element(dx, dy))
+                # sligthly overlap - we can do this
+                dx += w.bbox.width - self.thickness * 0.7
 
-                with self.moved(move=move, bbox=w.bbox(), label=f"front piece {i}/{j}"):
-                    w.render(callback=self.show_cc, turtle=True)
+            row_bbox = BBox.combine(b for _, b, _ in row)
+            elems.extend(row)
+            dy += row_bbox.height + self.spacing
+
+        with self.moved(move=move, bbox=BBox.combine(b for _, b, _ in elems)):
+            for (dx, dy), _, elem in elems:
+                with self.saved_context():
+                    self.moveTo(dx, dy)
+                    elem()
 
     @property
     def sh_effective(self):
@@ -274,42 +311,48 @@ class MailRack(Boxes):
 
     def back(self, move):
         w = WallBuilder(self)
-        print(self.last_height())
-        w.add(self.sx, 90, "F")
-        w.add(self.sh_effective, 90, "f")
-        w.add(reversed(self.sx), 90, "e")
-        w.add(reversed(self.sh_effective), 90, "f")
 
-        with self.moved(move=move, bbox=w.bbox(), label="back"):
+        # w.add(self.sx, 90, "F")
+        w.surround(self.sx, 90, "F", self.thickness, "e")
+        w.surround(self.sh_effective, 90, "F", self.thickness, "e")
+        # w.add(reversed(self.sx), 90, "e")
+        w.surround(reversed(self.sx), 90, "e", self.thickness, "e")
+        w.surround(reversed(self.sh_effective), 90, "F", self.thickness, "e")
+
+        with self.moved(move=move, bbox=w.bbox, label="back"):
             # horizontal finger holes
             with self.saved_context():
+                self.moveTo(self.thickness, self.thickness / 2)
                 for h in self.sh:
-                    self.moveTo(0, h)
+                    self.moveTo(0, self.thickness + h)
                     with self.saved_context():
                         for x in self.sx:
                             self.fingerHolesAt(0, 0, x, 0)
                             self.moveTo(x, 0)
+                            self.moveTo(self.thickness, 0)
 
             # vertical finger holes
             with self.saved_context():
+                self.moveTo(self.thickness / 2, self.thickness)
                 for x in self.sx[:-1]:
-                    self.moveTo(x, 0)
+                    self.moveTo(x + self.thickness, 0)
                     with self.saved_context():
                         for h in self.sh_effective:
                             self.fingerHolesAt(0, 0, h, 90)
                             self.moveTo(0, h)
+                            self.moveTo(0, self.thickness)
 
             w.render(callback=self.show_cc, turtle=True)
 
     @contextlib.contextmanager
-    def moved(self, move, bbox, label=None):
-        minx, miny, maxx, maxy = bbox
-        width = maxx - minx
-        height = maxy - miny
+    def moved(self, move, bbox: BBox, label=None):
+        assert isinstance(bbox, BBox)
+        width = bbox.maxx - bbox.minx
+        height = bbox.maxy - bbox.miny
 
         if self.move(width, height, move, before=True):
             return True
-        self.moveTo(-minx, -miny)
+        self.moveTo(-bbox.minx, -bbox.miny)
         yield
 
         self.move(width, height, move, label=label)
@@ -359,20 +402,27 @@ class WallBuilder:
     def get_edges(self):
         return [i.edge for i in self.instr]
 
-    def total_width(self):
-        minx, _, maxx, _ = self.bbox()
-        return maxx - minx
+    def surround(self, lengths, last_angle, positive_edge, gap_size, gap_edge):
+        lengths = list(lengths)
+        for l in lengths:
+            self.add(gap_size, 0, gap_edge)
+            self.add(l, 0, positive_edge)
+        self.add(gap_size, last_angle, gap_edge)
 
-    def bbox(self):
+    # def interleave(self, lengths, last_angle, positive_edge, gap_size, gap_edge):
+    #    lengths = list(lengths)
+    #    for l in lengths[:-1]:
+    #        self.add(l, 0, positive_edge)
+    #        self.add(gap_size, 0, gap_edge)
+    #    self.add(lengths[-1], last_angle, positive_edge)
+
+    @property
+    def bbox(self) -> BBox:
         edges = self.get_edges()
         edges = [self.boxes.edges[e] for e in edges]
         borders = self.boxes._closePolygon(self.get_borders())
         minx, miny, maxx, maxy = self.boxes._polygonWallExtend(borders, edges)
-        return minx, miny, maxx, maxy
-
-    def total_height(self):
-        _, miny, _, maxy = self.bbox()
-        return maxy - miny
+        return BBox(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
 
     def render(self, move=None, callback=None, turtle=False, correct_corners=True):
 
@@ -389,4 +439,11 @@ class WallBuilder:
             callback=callback,
             move=move,
             turtle=turtle,
+        )
+
+    def to_element(self, dx, dy):
+        return (
+            (dx, dy),
+            self.bbox.shift(dx, dy),
+            lambda: self.render(callback=self.boxes.show_cc, turtle=True),
         )

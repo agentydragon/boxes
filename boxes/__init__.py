@@ -1238,9 +1238,9 @@ class Boxes:
             if before:
                 # paint debug rectangle
                 if self.debug:
-                    with self.saved_context():
-                        self.set_source_color(Color.ANNOTATIONS)
-                        self.ctx.rectangle(0, 0, x, y)
+                   with self.saved_context():
+                       self.set_source_color(Color.ANNOTATIONS)
+                       self.ctx.rectangle(0, 0, x, y)
                 # save position
                 self.ctx.save()
                 if "rotated" in terms:

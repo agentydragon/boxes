@@ -2,6 +2,8 @@
 
 scripts/boxes MailRai
 
+scripts/boxes MailRai2 --burn=0 --FingerJoint_space=1 --FingerJoint_finger=1 --debug True
+
 left & right
 
 TODO: edges.CompoundEdge
@@ -14,13 +16,8 @@ import itertools
 import math
 import random
 
-from boxes import BoolArg, Boxes, Color, argparseSections, boolarg, restore
-from boxes.edges import (
-    FingerHoles,
-    FingerJointEdge,
-    FingerJointEdgeCounterPart,
-    FingerJointSettings,
-)
+from boxes import Boxes, Color, argparseSections, boolarg, restore
+from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, FingerJointSettings
 
 COLORS = [
     (255, 0, 0),
@@ -448,6 +445,7 @@ class MailRai2(Boxes):
             )
             wall.add(length=self.thickness, angle=90, edge="e")
 
+        # TODO: here the angle is 90 + self.angle_degrees.
         wall.add(length=self.front_length, angle=90, edge="F")
 
         label = "first front" if first else "interior front"

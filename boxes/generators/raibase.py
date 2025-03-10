@@ -15,7 +15,7 @@ from typing import Iterable
 import numpy as np
 import tabulate
 
-from boxes import Boxes
+from boxes import Boxes, Color
 from boxes.edges import FingerJointEdge, FingerJointSettings
 
 DEG_SIGN = "°"
@@ -341,6 +341,14 @@ class BBox:
         return self.maxx - self.minx
 
     @property
+    def center_x(self):
+        return self.minx + self.width / 2
+
+    @property
+    def center_y(self):
+        return self.miny + self.height / 2
+
+    @property
     def height(self):
         return self.maxy - self.miny
 
@@ -616,22 +624,26 @@ class WallBuilder:
     def render(self, move=None, callback=None, turtle=True, correct_corners=True):
         print(f"Rendering WallBuilder {self.label}:")
 
-        assert callback is None, "TODO: combine callbacks"
-        callback = self.boxes.show_cc
+        if self.boxes.debug:
+            assert callback is None, "TODO: combine callbacks"
+            callback = self.boxes.show_cc
 
         for item in self.items:
             if not item.text:
                 continue
             # draw text in middle of item
             x, y = item.center.astype(float)
-            with self.boxes.saved_context():
-                self.boxes.moveTo(x, y)
-                angle = item.angle
-                # make the angle always upright
-                if 90 < angle < 270:
-                    angle -= 180
-                text = item.text + f"={fmt(item.length)}"
-                self.boxes.text(text, fontsize=3, align="center bottom", angle=angle)
+            if self.boxes.debug:
+                with self.boxes.saved_context():
+                    self.boxes.moveTo(x, y)
+                    angle = item.angle
+                    # make the angle always upright
+                    if 90 < angle < 270:
+                        angle -= 180
+                    text = item.text + f"={fmt(item.length)}"
+                    self.boxes.text(
+                        text, fontsize=3, align="center bottom", angle=angle
+                    )
 
         print(indent(self.rendering_table(), "    "))
 
@@ -642,6 +654,15 @@ class WallBuilder:
             callback=callback,
             move=move,
             turtle=turtle,
+        )
+
+        self.boxes.text(
+            self.label,
+            x=self.bbox.center_x,
+            y=self.bbox.center_y,
+            fontsize=5,
+            align="middle center",
+            color=Color.ANNOTATIONS,
         )
 
     @contextlib.contextmanager

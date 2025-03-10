@@ -348,11 +348,15 @@ class Compound:
 
     @classmethod
     def intersperse(
-        cls, sep: Section | Iterable[Section], items: Iterable[Section], how: str
+        cls,
+        sep: Section | Iterable[Section],
+        items: Iterable[Section],
+        start: bool,
+        end: bool,
     ) -> Compound:
         if isinstance(sep, Section):
             sep = itertools.repeat(sep)
-        return cls(list(intersperse(sep, items, how=how)))
+        return cls(list(intersperse(sep, items, start=start, end=end)))
 
     def __reversed__(self):
         return Compound(reversed(self.sections))
@@ -380,76 +384,30 @@ class Section:
         self.text = text
 
 
-def intersperse(sep, items, how: str):
+def intersperse(sep, items, start: bool = False, end: bool = False):
     """
     Examples:
-      intersperse([1,2,3,4,5,6,7], [10,20,30], "outer")
+      intersperse([1,2,3,4,5,6,7], [10,20,30], start=True, end=True)
         -> 1,10,2,20,3,30,4
 
-      intersperse([1,2,3], [10,20,30], "inner")
+      intersperse([1,2,3], [10,20,30], start=True, end=True)
         -> 10,1,20,2,30
     """
     sep_iter = iter(sep)  # iterate sep so we can pull next-sep each time
     items_iter = iter(items)
 
-    if how == "outer":
-        first = True
-        for x in items_iter:
-            # Leading sep
-            if first:
-                try:
-                    yield next(sep_iter)
-                except StopIteration:
-                    pass
-            # Current item
-            yield x
-            # Trailing sep
-            try:
-                yield next(sep_iter)
-            except StopIteration:
-                pass
-            first = False
+    first = True
+    for x in items_iter:
+        if first and start:
+            yield next(sep_iter)
 
-    elif how == "inner":
-        first = True
-        for x in items_iter:
-            if not first:
-                try:
-                    yield next(sep_iter)
-                except StopIteration:
-                    pass
-            yield x
-            first = False
+        if not first:
+            yield next(sep_iter)
+        yield x
+        first = False
 
-    else:
-        raise ValueError(f"Unsupported how={how!r}")
-
-
-# def intersperse(sep, items, how: str):
-#    """
-#    intersperse(0, "abc", how="outer")
-#        -> 0 'a' 0 'b' 0 'c' 0
-#    intersperse(0, "abc", how="inner")
-#        -> 'a' 0 'b' 0 'c'
-#    """
-#    if how == "outer":
-#        first = True
-#        for x in items:
-#            if first:
-#                yield sep
-#            yield x
-#            yield sep
-#            first = False
-#    elif how == "inner":
-#        it = iter(items)
-#        first = True
-#        for x in it:
-#            if not first:
-#                yield sep
-#            yield x
-#            first = False
-#    else:
-#        raise ValueError(f"Unsupported how={how!r}")
+    if end and not first:
+        yield next(sep_iter)
 
 
 @dataclasses.dataclass
@@ -657,88 +615,50 @@ from hamcrest import assert_that, equal_to
 
 
 @pytest.mark.parametrize(
-    "input,how,expected",
+    "input,start,end,expected",
     [
-        ("abc", "outer", "_a_b_c_"),
-        ("a", "outer", "_a_"),
-        ("", "outer", ""),
-        ("abc", "inner", "a_b_c"),
-        ("a", "inner", "a"),
-        ("", "inner", ""),
+        ("abc", True, True, "_a_b_c_"),
+        ("a", True, True, "_a_"),
+        ("", True, True, ""),
+        ("abc", False, False, "a_b_c"),
+        ("a", False, False, "a"),
+        ("", False, False, ""),
     ],
 )
-def test_intersperse_repeat_sep(input, how, expected):
+def test_intersperse_repeat_sep(input, start, end, expected):
     assert_that(
-        "".join(intersperse(itertools.repeat("_"), input, how=how)), equal_to(expected)
+        "".join(intersperse(itertools.repeat("_"), input, start=start, end=end)),
+        equal_to(expected),
     )
 
 
-# class TestBox:
-#    @property
-#    def shortcuts(self):
-#        # We'll auto-inject 'f' and 'sx'
-#        return {
-#            "f": "INJECTED_F",
-#            "sx": ["sx1", "sx2"],
-#        }
-#
-#    @inject_after_shortcuts
-#    def sx_separated(self, f, sx, edge, how="outer"):
-#        return list(intersperse(f, sx, how=how))
-#
-#
-# def test_inject_nothing_passed():
-#    """
-#    Call with only the one positional argument "EDGE"
-#    so 'f' and 'sx' come from shortcuts, 'edge' is "EDGE",
-#    and 'how' is its default "outer".
-#    """
-#    box = TestBox()
-#    result = box.sx_separated("EDGE")
-#    # f => 'INJECTED_F'
-#    # sx => ['sx1', 'sx2']
-#    # edge => 'EDGE'
-#    # how => 'outer'
-#    assert result == ["INJECTED_F", "sx1", "INJECTED_F", "sx2", "INJECTED_F"]
-#
-#
-# def test_override_injected_f():
-#    """
-#    Here we pass f explicitly, so that overrides the injected 'f'.
-#    The single positional argument again goes to 'edge',
-#    'sx' is injected from shortcuts, 'how' from default.
-#    """
-#    box = TestBox()
-#    result = box.sx_separated("EDGE", f="OVERRIDE_F")
-#    assert result == ["OVERRIDE_F", "sx1", "OVERRIDE_F", "sx2", "OVERRIDE_F"]
-#
-#
-# def test_override_all():
-#    """
-#    If we pass all positional arguments, we override everything:
-#    f, sx, edge, and how. No injection needed in that case.
-#    """
-#    box = TestBox()
-#    result = box.sx_separated("MANUAL_F", ["A", "B"], "MY_EDGE", how="inner")
-#    assert result == [
-#        "A",
-#        "MANUAL_F",
-#        "B",  # pattern for how="inner" is item, sep, item...
-#    ]
-#
-#
-# def test_too_many_pos_args():
-#    """
-#    If we pass more positional arguments than parameters available,
-#    after injection, we should get a TypeError.
-#    """
-#    box = TestBox()
-#    with pytest.raises(TypeError, match="got 4 positional"):
-#        # We only have (self, f, sx, edge, how='outer') => 4 real parameters after 'self'
-#        # but we pass 4 positional (that leaves no place for 'how' if injection is done).
-#        box.sx_separated("ONE", "TWO", "THREE", "FOUR")
-#
-#
+class TestBox:
+    @property
+    def shortcuts(self):
+        return {"x": "foo", "y": "bar"}
+
+    @inject_shortcuts
+    def fn(self, x, y, arg, default="default"):
+        return f"{x=} {y=} {arg=} {default=}"
+
+
+def test_inject_nothing_passed():
+    """Fill only one positional arg."""
+    box = TestBox()
+    result = box.fn("beep")
+    assert_that(result, equal_to("x='foo' y='bar' arg='beep' default='default'"))
+
+
+def test_too_many_pos_args():
+    """
+    If we pass more positional arguments than parameters available,
+    after injection, we should get a TypeError.
+    """
+    box = TestBox()
+    with pytest.raises(TypeError, match="got 4 positional"):
+        box.fn(1, 2, 3, 4)
+
+
 from pathlib import Path
 
 if (retcode := pytest.main([Path(__file__).resolve()])) != 0:

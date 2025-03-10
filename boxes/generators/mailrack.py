@@ -8,9 +8,10 @@ scripts/boxes MailRack \
 
 from __future__ import annotations
 
-from math import cos, radians, sin, tan
+from math import cos, radians, sin, sqrt, tan
 
 import numpy as np
+from hamcrest import assert_that, close_to
 
 from boxes import argparseSections, boolarg, restore
 from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, FingerJointSettings
@@ -32,8 +33,12 @@ RIGHT_ARROW = "→"
 DOWN_ARROW = "↓"
 
 
-def undermark(s):
+def mark(s):
     return DOWN_ARROW + s + DOWN_ARROW
+
+
+def make_sections(xs, name, edge):
+    return [Section(x, edge, text=f"{name}{i}") for i, x in enumerate(xs)]
 
 
 class MailRack(RaiBase):
@@ -49,18 +54,36 @@ class MailRack(RaiBase):
 
     @property
     def shortcuts(self):
+        alpha_rad = radians(self.alpha_deg)
+        f = self.finger_hole_width
+        sh = self.sh
+        d = self.floor_depth
+        a = self.side_angled_length
+        sin_a, cos_a = sin(alpha_rad), cos(alpha_rad)
+
+        hat_length = (d + a * cos_a) / sin_a
+
+        # right-angle triangles:
+        # 1. front length, hat length, [diagonal]
+        # 2. floor depth, (hat height + spacer), [diagonal]
+        hat_height = sqrt(a**2 + hat_length**2 - d**2) - f
+
+        sheff = sh + [hat_height]
+
         return dict(
-            f=self.finger_hole_width,
+            f=f,
             sx=self.sx,
-            sh=self.sh,
+            sh=sh,
             alpha_deg=self.alpha_deg,
-            alpha_rad=self.alpha_rad,
-            d=self.floor_depth,
-            a=self.side_angled_length,
-            sin_a=sin(self.alpha_rad),
-            cos_a=cos(self.alpha_rad),
-            tan_a=tan(self.alpha_rad),
-            angle_rad=self.alpha_rad,
+            d=d,
+            a=a,
+            sin_a=sin_a,
+            cos_a=cos_a,
+            angle_rad=alpha_rad,
+            hat_length=hat_length,
+            hat_height=hat_height,
+            sheff=sheff,
+            gap=Section(f, PLAIN, text="f"),
         )
 
     def setup(self):
@@ -72,62 +95,81 @@ class MailRack(RaiBase):
 
     def render(self):
         self.setup()
-        # self.back(move="right")  # <- ok
+        self.back(move="right")  # <- ok
         # self.floor_pieces(move="right")
         self.side(move="right")
 
     @inject_shortcuts
-    def side(self, d, a, f, alpha_deg, move, sh, cos_a, sin_a, tan_a, angle_rad):
+    def side(
+        self,
+        a,
+        alpha_deg,
+        angle_rad,
+        cos_a,
+        d,
+        f,
+        gap,
+        hat_height,
+        hat_length,
+        move,
+        sh,
+        sheff,
+        sin_a,
+    ):
+        w = self.wall_builder("side")
+        w.add(d, alpha_deg, FINGER_COUNTER, text=mark("floor=d"))
 
-        # horizontal = self.separated(sx, xs_name="sx", edge=FINGER_COUNTER)
-        # vertical = self.separated(sh, xs_name="sh", edge=FINGER_COUNTER)
-        w = (
-            self.wall_builder("side")
-            .add(d, alpha_deg, FINGER, text=undermark("floor=d"))
-            .add(a, 90, FINGER_COUNTER, text=undermark("front=a"))
-            # .add(horizontal.length, 90, PLAIN)
-            # .add(reversed(vertical), 90)
-        )
+        zigzags: list[tuple[float, float]] = [
+            tuple(coord(cos_a, sin_a) * (h + f)) for h in sh
+        ]
 
-        # draw some helpers
-        # first_cusp = w.position
+        #### bottom cover options
+        if False:
+            # Plain
+            section = Section(a, FINGER_COUNTER, text=mark("front=a"))
+        else:
+            # Same as covers on other levels
+            _zig, zag = zigzags[1]
+            section = Compound(
+                [
+                    Section(a - zag, PLAIN, text=mark("front counterzag")),
+                    Section(zag, FINGER_COUNTER, text=mark("front zag")),
+                ]
+            )
+        assert_that(section.length, close_to(a, delta=1e-3))
+
+        w.add(section, 90)
 
         # Used to draw edges of finger hole area
         zigzag_corners = []
 
         # orthogonal, zig-zaggy side
-        for i, h in enumerate(sh):
-            if i > 0:
-                h += f
-            zig, zag = coord(cos_a, sin_a) * h
-            w.add(zig, -90, PLAIN, text=undermark("zig"))
-            zigzag_corners.append((w.position, zag))
-            w.add(
-                zag,
-                90,
-                FINGER_COUNTER,
-                text=undermark(f"zag"),
-            )
+        for zig, zag in zigzags:
+            w.add(zig, -90, PLAIN, text=mark("zig"))
+            zigzag_corners.append(w.position)
+            w.add(zag, 90, FINGER_COUNTER, text=mark("zag"))
 
         # now go all the way from current x to x=0
-        distance = w.position[0] / sin_a
-        w.add(distance, 180 - alpha_deg, PLAIN, text=undermark("topside"))
+        w.add(hat_length, 180 - alpha_deg, PLAIN, text=mark("topside"))
 
         # now all the way down.
-        y_need = w.position[1] - sum(sh) - len(sh) * f
-        eff_heights = sh + [y_need]
+        y_need = w.position[1] - sum(sh) - (len(sh) + 1) * f
+        assert abs(y_need - hat_height) < 1e-3, f"Measured {y_need} != {hat_height}"
         w.add(
-            Compound.intersperse(
-                Section(f, PLAIN, text="f"),
-                (Section(h, FINGER, text="sh") for h in reversed(eff_heights)),
-                how="inner",
+            reversed(
+                Compound.intersperse(
+                    gap,
+                    make_sections(sheff, "sheff", FINGER),
+                    start=True,
+                    end=False,
+                )
             ),
-            0,
+            90,
         )
 
         with w.moved(move=move):
             # Draw edges of finger hole area
-            for zigzag_corner, zag in zigzag_corners:
+            for zigzag_corner, (_zig, zag) in zip(zigzag_corners, zigzags):
                 color = (0, 128, 128)
                 with self.saved_context():
                     self.ctx.set_source_rgb(*color)
@@ -150,36 +192,9 @@ class MailRack(RaiBase):
                         self.edge(d + delta)
                         self.ctx.stroke()
 
-            ### cusp point debug
-            # for point in [
-            #    first_cusp,
-            #    # first_cusp + coord(0, f),
-            # ]:
-            #    color = (128, 128, 128)
-            #    with self.saved_context():
-            #        self.ctx.set_source_rgb(*color)
-
-            #        self.moveTo(point, 90)
-            #        self.circle(r=2)
-            #        self.circle(r=3)
-            #        # self.ctx.line_to(0, sh[0])
-            #        self.moveTo(sh[0], 0)
-            #        self.corner(90 + alpha_deg)
-            #        self.edge(a)
-            #        self.corner(-alpha_deg)
-            #        self.edge(d)
-            #        self.ctx.stroke()
-            #        # self.ctx.moveTo(0, sh[0], 180 - alpha)
-            #        # self.ctx.stroke()
-            #        # self.ctx.line_to(0, sh[0])
-
     def circle(self, x=0, y=0, r=1):
         """Sets defaults."""
         super().circle(x=x, y=y, r=r)
-
-    @property
-    def alpha_rad(self):
-        return radians(self.alpha_deg)
 
     # @inject_shortcuts
     # def _floor_piece(self, sx, i):
@@ -213,53 +228,36 @@ class MailRack(RaiBase):
     #        move=move,
     #    )
 
-    @property
-    def sh_effective(self):
-        return self.sh + [self.last_height()]
-
     @inject_shortcuts
-    def separated(self, f, xs, edge, xs_name) -> Compound:
-        return Compound.intersperse(
-            Section(f, PLAIN, text="f"),
-            (Section(x, edge, text=f"{xs_name}{i}") for i, x in enumerate(xs)),
-            how="outer",
+    def back(self, f, sx, move, sheff, gap):
+        xedges = Compound.intersperse(
+            gap, make_sections(sx, "sx", FINGER_COUNTER), start=True, end=True
         )
-
-    @inject_shortcuts
-    def back(self, f, sx, sh, move):
-        horizontal = self.separated(sx, xs_name="sx", edge=FINGER_COUNTER)
-        vertical = self.separated(sh, xs_name="sh", edge=FINGER_COUNTER)
+        yedges = Compound.intersperse(
+            gap,
+            make_sections(sheff, "sheff", FINGER_COUNTER),
+            start=True,
+            end=False,
+        )
         w = (
             self.wall_builder("back")
-            .add(horizontal, 90)
-            .add(vertical, 90)
-            .add(horizontal.length, 90, PLAIN)
-            .add(reversed(vertical), 90)
+            .add(xedges, 90)
+            .add(yedges, 90)
+            .add(xedges.length, 90, PLAIN)
+            .add(reversed(yedges), 90)
         )
         with w.moved(move=move):
-            pass
+            with self.saved_context():
+                self.moveTo(f, f / 2)
 
-        # with self.moved(move=move, bbox=w.bbox, label="back"):
-        #    # horizontal finger holes
-        #    with self.saved_context():
-        #        self.moveTo(self.thickness, self.thickness / 2)
-        #        for h in self.sh:
-        #            self.moveTo(0, self.thickness + h)
-        #            with self.saved_context():
-        #                for x in self.sx:
-        #                    self.fingerHolesAt(0, 0, x, 0)
-        #                    self.moveTo(x, 0)
-        #                    self.moveTo(self.thickness, 0)
+                for iy, dy in enumerate(sheff):
+                    with self.saved_context():
+                        for ix, dx in enumerate(sx):
+                            # if ix < len(sx) - 1:
+                            if iy > 0:
+                                self.fingerHolesAt(0, 0, dx, 0)
 
-        #    # vertical finger holes
-        #    with self.saved_context():
-        #        self.moveTo(self.thickness / 2, self.thickness)
-        #        for x in self.sx[:-1]:
-        #            self.moveTo(x + self.thickness, 0)
-        #            with self.saved_context():
-        #                for h in self.sh_effective:
-        #                    self.fingerHolesAt(0, 0, h, 90)
-        #                    self.moveTo(0, h)
-        #                    self.moveTo(0, self.thickness)
-
-        #    w.render(callback=self.show_cc, turtle=True)
+                            if ix > 0:
+                                self.fingerHolesAt(-f / 2, f / 2, dy, 90)
+                            self.moveTo(dx + f, 0)
+                    self.moveTo(0, dy + f)

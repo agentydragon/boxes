@@ -233,6 +233,14 @@ class RaiBase(Boxes):
             default=default,
         )
 
+    def add_str_arg(self, name, default):
+        self.argparser.add_argument(
+            f"--{name}",
+            action="store",
+            type=str,
+            default=default,
+        )
+
     @property
     def finger_hole_width(self) -> float:
         return self.finger_joint_settings.width + self.finger_joint_settings.play
@@ -280,39 +288,44 @@ class RaiBase(Boxes):
 
         self.move(bbox.width, bbox.height, move, label=label)
 
-    def render_moved_elements(self, elems, move):
-        assert isinstance(elems, Iterable)
-        with self.moved(move=move, bbox=BBox.combine(e.bbox for e in elems)):
-            for e in elems:
-                e.do_render()
+    def ystack(self, *elements):
+        if len(elements) == 1 and isinstance(elements[0], Iterable):
+            elements = elements[0]
+        return self.stack(elements, orient="y")
+
+    def xstack(self, *elements):
+        if len(elements) == 1 and isinstance(elements[0], Iterable):
+            elements = elements[0]
+        return self.stack(elements, orient="x")
+
+    def stack(
+        self,
+        elements,
+        orient,
+    ):
+        assert orient in "xy"
+        arranged = []
+        for e in elements:
+            if arranged:
+                bbox = arranged[-1].bbox
+                if orient == "y":
+                    prev = coord(0, bbox.maxy + self.spacing)
+                if orient == "x":
+                    prev = coord(bbox.maxx + self.spacing, 0)
+            else:
+                prev = coord(0, 0)
+            arranged.append(e.translate(prev))
+        return Element.union(self, arranged)
 
     def build_element_grid(
         self,
-        nx,
-        ny,
-        element_factory,
-        xspacing=None,
+        factory,
+        nx=1,
+        ny=1,
     ):
-        if xspacing is None:
-            xspacing = self.spacing
-
-        elems = []
-        pos = coord(0, 0)
-        for yi in range(ny):
-            pos[0] = 0
-            row = []
-            for xi in range(nx):
-                print(f"making element at {pos}, {xi=}, {yi=}")
-                element = Element.from_item(element_factory(xi, yi)).translate(pos)
-                row.append(element)
-                # sligthly overlap - we can do this
-                pos += coord(element.bbox.width + xspacing, 0)
-
-            elems.extend(row)
-            row_bbox = BBox.combine(e.bbox for e in row)
-            pos += coord(0, row_bbox.height + self.spacing)
-
-        return Element.union(self, elems)
+        return self.ystack(
+            self.xstack(factory(xi, yi) for xi in range(nx)) for yi in range(ny)
+        )
 
     def hole(self, x, y=None, r=0.0, d=0.0, tabs=0):
         """Allow invoking as hole(numpy coordinate)"""
@@ -622,7 +635,7 @@ class WallBuilder:
         return BBox(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
 
     def render(self, move=None, callback=None, turtle=True, correct_corners=True):
-        print(f"Rendering WallBuilder {self.label}:")
+        # print(f"Rendering WallBuilder {self.label}:")
 
         if self.boxes.debug:
             assert callback is None, "TODO: combine callbacks"
@@ -645,7 +658,7 @@ class WallBuilder:
                         text, fontsize=3, align="center bottom", angle=angle
                     )
 
-        print(indent(self.rendering_table(), "    "))
+        # print(indent(self.rendering_table(), "    "))
 
         self.boxes.polygonWall(
             self.get_borders(),
@@ -699,6 +712,7 @@ class Element:
 
     def add_render(self, render):
         self.render.append(render)
+        return self
 
     def translate(self, d):
         return Element(
@@ -713,6 +727,7 @@ class Element:
         for c in self.render:
             with self.boxes.saved_context():
                 self.boxes.moveTo(x, y)
+                # self.boxes.moveTo(-self.bbox.minx, -self.bbox.miny)
                 c()
 
     @classmethod
@@ -738,8 +753,10 @@ class Element:
             boxes=self.boxes,
         )
 
+    def close_part(self):
+        self.render.append(lambda: self.boxes.ctx.new_part())
+        return self
 
-##### unit tests ####
 
 import sys
 

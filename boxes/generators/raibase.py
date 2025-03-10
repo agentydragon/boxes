@@ -5,6 +5,7 @@ import dataclasses
 import functools
 import inspect
 import itertools
+import logging
 import random
 from decimal import ROUND_HALF_UP, Decimal
 from math import cos, radians, sin
@@ -15,7 +16,7 @@ import numpy as np
 import tabulate
 
 from boxes import Boxes
-from boxes.edges import FingerJointSettings
+from boxes.edges import FingerJointEdge, FingerJointSettings
 
 DEG_SIGN = "°"
 ALPHA_SIGN = "α"
@@ -37,6 +38,62 @@ def fmt(x, show_sign=False):
     if show_sign and x >= 0:
         s = "+" + s
     return s
+
+
+class SkippingFingerJoint(FingerJointEdge):
+    def __init__(self, *args, idx_predicate, reversed: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.calls = []
+        self.idx_predicate = idx_predicate
+        self.reversed = reversed
+
+        self.logger = logging.getLogger("SkippingFingerJoint")
+
+    def edge(self, length, *args, **kwargs):
+        self.calls.append(("edge", length, args, kwargs))
+
+    def draw_finger(self, f, h, *args, **kwargs):
+        self.calls.append(("draw_finger", f, h, args, kwargs))
+
+    def _rewrite_calls(self, calls):
+        finger = 0
+        for call in calls:
+            match call:
+                case ("edge", length, args, kwargs):
+                    self.logger.info(f"  edge({length})")
+                    yield call
+                case ("draw_finger", f, h, args, kwargs):
+                    prefix = f"finger({f=}, {h=}) #{finger} =>"
+                    if self.idx_predicate(finger):
+                        self.logger.info(f"  {prefix} accept")
+                        yield call
+                    else:
+                        self.logger.info(f"  {prefix} reject, edge")
+                        yield ("edge", f, [], {})
+                    finger += 1
+                case _:
+                    raise ValueError(f"Unknown call: {call}")
+
+    def __call__(self, length, bedBolts=None, **kw):
+        self.logger.info(f"<skipping finger joint {length=} {self.reversed=}>")
+        self.calls = []
+        super().__call__(length, bedBolts, **kw)
+
+        calls = list(self._rewrite_calls(self.calls))
+        if self.reversed:
+            calls = reversed(calls)
+        self.logger.info("calling:")
+        for c in calls:
+            match c:
+                case ("edge", length, args, kwargs):
+                    self.logger.info(f"edge({length})")
+                    self.boxes.edge(length, *args, **kwargs)
+                case ("draw_finger", f, h, args, kwargs):
+                    self.logger.info(f"draw_finger({f=}, {h=})")
+                    super().draw_finger(f, h, *args, **kwargs)
+                case _:
+                    raise ValueError(f"Unknown call: {c}")
+        self.logger.info("</skipping finger joint>")
 
 
 def inject_shortcuts(func):
@@ -186,6 +243,13 @@ class RaiBase(Boxes):
             self.thickness, relative=True, **self.edgesettings.get("FingerJoint", {})
         )
 
+    def make_standard_finger_joint_settings(self):
+        return FingerJointSettings(
+            relative=True,
+            thickness=self.thickness,
+            **self.edgesettings.get("FingerJoint", {}),
+        )
+
     def make_angled_finger_joint_settings(self, angle_deg):
         return FingerJointSettings(
             relative=True,
@@ -220,26 +284,35 @@ class RaiBase(Boxes):
         assert isinstance(elems, Iterable)
         with self.moved(move=move, bbox=BBox.combine(e.bbox for e in elems)):
             for e in elems:
-                with self.saved_context():
-                    self.moveTo(*e.position.astype(float))
-                    e.render()
+                e.do_render()
 
-    def build_element_grid(self, nx, ny, element_factory):
+    def build_element_grid(
+        self,
+        nx,
+        ny,
+        element_factory,
+        xspacing=None,
+    ):
+        if xspacing is None:
+            xspacing = self.spacing
+
         elems = []
         pos = coord(0, 0)
         for yi in range(ny):
             pos[0] = 0
             row = []
             for xi in range(nx):
+                print(f"making element at {pos}, {xi=}, {yi=}")
                 element = Element.from_item(element_factory(xi, yi)).translate(pos)
                 row.append(element)
                 # sligthly overlap - we can do this
-                pos += coord(element.bbox.width + self.spacing, 0)
+                pos += coord(element.bbox.width + xspacing, 0)
 
             elems.extend(row)
             row_bbox = BBox.combine(e.bbox for e in row)
             pos += coord(0, row_bbox.height + self.spacing)
-        return elems
+
+        return Element.union(self, elems)
 
     def hole(self, x, y=None, r=0.0, d=0.0, tabs=0):
         """Allow invoking as hole(numpy coordinate)"""
@@ -377,7 +450,7 @@ class Section:
         assert isinstance(length, (int, float))
 
         assert isinstance(edge, str) and len(edge) == 1
-        assert edge in "efFbB", f"unknown {edge=}"
+        # assert edge in "efFaAbB", f"unknown {edge=}"
 
         self.length = length
         self.edge = edge
@@ -470,7 +543,7 @@ class WallBuilder:
                     start=self.position,
                     end=next,
                 )
-                print(f"  {item=}")
+                # print(f"  {item=}")
                 self.items.append(item)
                 self.angle += radians(angle)
                 self.position = next
@@ -582,7 +655,11 @@ class WallBuilder:
 class Element:
     position: np.array  # dx,dy
     bbox: BBox
-    render: callable
+    render: list[callable]
+    boxes: Boxes
+
+    def __post_init__(self):
+        assert isinstance(self.position, np.ndarray)
 
     @classmethod
     def from_item(cls, obj):
@@ -591,19 +668,42 @@ class Element:
                 return obj
             case WallBuilder():
                 return cls(
-                    position=(0, 0),
+                    position=coord(0, 0),
                     bbox=obj.bbox,
-                    render=obj.render,
+                    render=[obj.render],
+                    boxes=obj.boxes,
                 )
             case _:
                 raise ValueError(f"Unsupported {obj = }")
 
+    def add_render(self, render):
+        self.render.append(render)
+
     def translate(self, d):
         return Element(
+            boxes=self.boxes,
             position=self.position + d,
             bbox=self.bbox.shift(d),
             render=self.render,
         )
+
+    def do_render(self):
+        x, y = self.position.astype(float)
+        for c in self.render:
+            with self.boxes.saved_context():
+                self.boxes.moveTo(x, y)
+                c()
+
+    @classmethod
+    def union(cls, boxes, elements):
+        elements = list(elements)
+        bbox = BBox.combine(e.bbox for e in elements)
+
+        def render():
+            for e in elements:
+                e.do_render()
+
+        return Element(position=coord(0, 0), bbox=bbox, render=[render], boxes=boxes)
 
 
 ##### unit tests ####

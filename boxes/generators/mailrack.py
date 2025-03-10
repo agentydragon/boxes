@@ -1,8 +1,7 @@
 """
 scripts/boxes MailRack \
-        --sh '50*3' \
-        --sx '50*3' \
-        --debug=True
+        --sh '40*2' --sx '40*3' --debug=True \
+        --reference 0
 
 """
 
@@ -18,8 +17,10 @@ from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, FingerJoint
 from boxes.generators.raibase import (
     ALPHA_SIGN,
     Compound,
+    Element,
     RaiBase,
     Section,
+    SkippingFingerJoint,
     coord,
     inject_shortcuts,
 )
@@ -31,6 +32,9 @@ ANGLED_POS = "b"
 ANGLED_NEG = "B"
 RIGHT_ARROW = "→"
 DOWN_ARROW = "↓"
+SKIP_EVEN = "a"
+SKIP_ODD = "A"
+SKIP_ODD_REVERSE = "@"
 
 
 def mark(s):
@@ -48,8 +52,8 @@ class MailRack(RaiBase):
         # sx: inner widths of sections
 
         self.buildArgParser("sh", "sx")
-        self.add_float_arg("alpha_deg", 60)
-        self.add_float_arg("side_angled_length", 100)
+        self.add_float_arg("alpha_deg", 45)  # 60)
+        self.add_float_arg("side_angled_length", 60)
         self.add_float_arg("floor_depth", 30)  # 'd'
 
     @property
@@ -87,17 +91,48 @@ class MailRack(RaiBase):
         )
 
     def setup(self):
+        import logging
+
+        logging.getLogger("SkippingFingerJoint").setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
+
         s = self.make_angled_finger_joint_settings(self.alpha_deg)
-        self.edges |= {
-            ANGLED_POS: FingerJointEdge(self, s),
-            ANGLED_NEG: FingerJointEdgeCounterPart(self, s),
-        }
+        self.edges[ANGLED_POS] = FingerJointEdge(self, s)
+        self.edges[ANGLED_NEG] = FingerJointEdgeCounterPart(self, s)
+
+        s = self.make_standard_finger_joint_settings()
+        s.edgeObjects(self)
+        self.edges[SKIP_EVEN] = SkippingFingerJoint(
+            self, s, idx_predicate=lambda i: i % 2 == 0
+        )
+        self.edges[SKIP_ODD] = SkippingFingerJoint(
+            self, s, idx_predicate=lambda i: i % 2 == 1
+        )
+        self.edges[SKIP_ODD_REVERSE] = SkippingFingerJoint(
+            self, s, idx_predicate=lambda i: i % 2 == 1, reversed=True
+        )
 
     def render(self):
         self.setup()
-        self.back(move="right")  # <- ok
+
+        back = self.back()
+        back.do_render()
+
+        midfloor_pieces = self.midfloor_pieces()
+        midfloor_pieces.translate(
+            coord(self.thickness, -midfloor_pieces.bbox.height)
+        ).do_render()
+
+        # with self.saved_context():
+        #    self.moveTo(back.bbox.width, 0)
+        #    side: Element = self.side()
+        #    side.do_render()
+
+        # with self.saved_context():
+        #    bottom = self.bottom_floor()
+        #    self.moveTo(0, -bottom.bbox.height)
+        #    bottom.do_render()
         # self.floor_pieces(move="right")
-        self.side(move="right")
 
     @inject_shortcuts
     def side(
@@ -109,13 +144,11 @@ class MailRack(RaiBase):
         d,
         f,
         gap,
-        hat_height,
         hat_length,
-        move,
         sh,
         sheff,
         sin_a,
-    ):
+    ) -> Element:
         w = self.wall_builder("side")
         w.add(d, alpha_deg, FINGER_COUNTER, text=mark("floor=d"))
 
@@ -153,8 +186,6 @@ class MailRack(RaiBase):
         w.add(hat_length, 180 - alpha_deg, PLAIN, text=mark("topside"))
 
         # now all the way down.
-        y_need = w.position[1] - sum(sh) - (len(sh) + 1) * f
-        assert abs(y_need - hat_height) < 1e-3, f"Measured {y_need} != {hat_height}"
         w.add(
             reversed(
                 Compound.intersperse(
@@ -167,8 +198,7 @@ class MailRack(RaiBase):
             90,
         )
 
-        with w.moved(move=move):
-            # Draw edges of finger hole area
+        def internals():
             for zigzag_corner, (_zig, zag) in zip(zigzag_corners, zigzags):
                 color = (0, 128, 128)
                 with self.saved_context():
@@ -191,6 +221,65 @@ class MailRack(RaiBase):
                         self.corner(-alpha_deg)
                         self.edge(d + delta)
                         self.ctx.stroke()
+
+            with self.saved_context():
+                self.moveTo(0, f / 2)
+                for h, (_zig, zag) in zip(self.sh, zigzags):
+                    self.moveTo(0, h + f)
+                    # self.moveTo(0, h)
+                    # self.fingerHolesAt(0, 0, a - zag, 90)
+                    with self.saved_context():
+                        delta = f / 2 * tan(angle_rad / 2)
+                        self.fingerHolesAt(0, 0, d - delta, 0)
+                        self.moveTo(d - delta, 0, alpha_deg)
+                        self.fingerHolesAt(0, 0, a - zag, 0)
+
+        element = Element.from_item(w)
+        element.add_render(internals)
+        return element
+
+    @inject_shortcuts
+    def bottom_floor(self, sx, gap, d, f) -> Element:
+        w = self.wall_builder("bottom_floor")
+        xedges = Compound.intersperse(
+            gap, make_sections(sx, "sx", FINGER), start=True, end=True
+        )
+        w.add(xedges, 90)
+        w.add(d, 90, FINGER)
+        w.add(xedges, 90)
+        w.add(d, 90, FINGER)
+
+        def internals():
+            # Vertical finger holes for bottom floor
+            with self.saved_context():
+                self.moveTo(f / 2, 0)
+                for x in self.sx[:-1]:
+                    self.moveTo(x + f, 0)
+                    self.fingerHolesAt(0, 0, d, 90)
+
+        element = Element.from_item(w)
+        element.add_render(internals)
+        return element
+
+    @inject_shortcuts
+    def midfloor_piece(self, x_idx, y_idx, sx, d) -> Element:
+        x = sx[x_idx]
+        w = self.wall_builder(f"midfloor{x_idx}/{y_idx}")
+        w.add(x, 90, FINGER)
+        w.add(d, 90, (SKIP_EVEN if x_idx < len(sx) - 1 else FINGER))
+        w.add(x, 90, FINGER)
+        w.add(d, 90, (SKIP_ODD_REVERSE if x_idx > 0 else FINGER))
+
+        return w
+
+    @inject_shortcuts
+    def midfloor_pieces(self, sx, sh, f):
+        return self.build_element_grid(
+            nx=len(sx),
+            ny=len(sh),
+            element_factory=self.midfloor_piece,
+            xspacing=-f,
+        )
 
     def circle(self, x=0, y=0, r=1):
         """Sets defaults."""
@@ -229,7 +318,7 @@ class MailRack(RaiBase):
     #    )
 
     @inject_shortcuts
-    def back(self, f, sx, move, sheff, gap):
+    def back(self, f, sx, sheff, gap) -> Element:
         xedges = Compound.intersperse(
             gap, make_sections(sx, "sx", FINGER_COUNTER), start=True, end=True
         )
@@ -246,10 +335,10 @@ class MailRack(RaiBase):
             .add(xedges.length, 90, PLAIN)
             .add(reversed(yedges), 90)
         )
-        with w.moved(move=move):
+
+        def internals():
             with self.saved_context():
                 self.moveTo(f, f / 2)
-
                 for iy, dy in enumerate(sheff):
                     with self.saved_context():
                         for ix, dx in enumerate(sx):
@@ -261,3 +350,7 @@ class MailRack(RaiBase):
                                 self.fingerHolesAt(-f / 2, f / 2, dy, 90)
                             self.moveTo(dx + f, 0)
                     self.moveTo(0, dy + f)
+
+        element = Element.from_item(w)
+        element.add_render(internals)
+        return element

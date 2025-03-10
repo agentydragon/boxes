@@ -1,6 +1,13 @@
 """
 scripts/boxes MailRack --debug=True --reference 0
 
+scripts/boxes MailRack --Mounting_style='mounting tab'
+
+"Tab": round thingies sticking up with slots for screws
+
+scripts/boxes MailRack --Mounting_style='straight edge, extended'
+
+scripts/boxes MailRack --Mounting_num=3
 """
 
 from __future__ import annotations
@@ -10,8 +17,13 @@ from math import cos, radians, sin, sqrt, tan
 
 from hamcrest import assert_that, close_to
 
-from boxes import argparseSections, boolarg, restore
-from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, FingerJointSettings
+from boxes import argparseSections, boolarg, holeCol, restore
+from boxes.edges import (
+    FingerJointEdge,
+    FingerJointEdgeCounterPart,
+    FingerJointSettings,
+    MountingSettings,
+)
 from boxes.generators.raibase import (
     ALPHA_SIGN,
     DEG_SIGN,
@@ -45,6 +57,7 @@ def make_sections(xs, name, edge):
     return [Section(x, edge, text=f"{name}{i}") for i, x in enumerate(xs)]
 
 
+# class MailRack(RaiBase):
 class MailRack(RaiBase):
     def __init__(self):
         super().__init__()
@@ -58,11 +71,11 @@ class MailRack(RaiBase):
         # self.add_str_arg("middle_style", "pockets")
 
         self.buildArgParser(
-            sh="140*2", sx="240*3"
+            sh="180*2", sx="240*3"
         )  # TODO: some cominations aren't compatible; document
-        self.add_float_arg("alpha_deg", 70)
-        self.add_float_arg("side_angled_length", 150)
-        self.add_float_arg("floor_depth", 40)
+        self.add_float_arg("alpha_deg", 60)
+        self.add_float_arg("side_angled_length", 170)
+        self.add_float_arg("floor_depth", 50)
         self.argparser.add_argument(
             "--middle_style",
             action="store",
@@ -100,6 +113,7 @@ class MailRack(RaiBase):
             default=60,
             help="Distance of nameplate slots.",
         )
+        self.addSettingsArgs(MountingSettings)
 
     @property
     def shortcuts(self):
@@ -195,6 +209,7 @@ class MailRack(RaiBase):
             element.translate(coord(0, y)).do_render()
 
         back = self.back()
+        print(f"width {fmt(back.bbox.width)} mm, height {fmt(back.bbox.height)} mm")
         _stack_y(back)
         _stack_y(
             self.ystack(
@@ -206,14 +221,15 @@ class MailRack(RaiBase):
 
         # divide sides to left/right
         all_sides = [self.side() for _ in range(len(self.sx) + 1)]
+        print(f"depth: {fmt(all_sides[0].bbox.width)} mm")
         split = len(all_sides) // 2
         on_left, on_right = all_sides[:split], all_sides[split:]
 
         right = self.ystack(on_right).translate(
-            coord(back.bbox.width + 2 * self.spacing, 0)
+            coord(back.bbox.width + 3 * self.spacing, 0)
         )
-        left = self.ystack(on_left).mirror().translate(coord(-2 * self.spacing, 0))
-        e = Element.union(self, [left, right]).translate(coord(0, self.thickness))
+        left = self.ystack(on_left).mirror().translate(coord(-3 * self.spacing, 0))
+        e = Element.union(self, [left, right]).translate(coord(0, 0))
         e.translate(coord(0, -e.bbox.height)).do_render()
 
     @inject_shortcuts
@@ -395,12 +411,48 @@ class MailRack(RaiBase):
 
         def internals():
             # Vertical finger holes for bottom floor
-            self.moveTo(f / 2, 0)
-            for x in sx[:-1]:
-                self.moveTo(x + f, 0)
-                self.fingerHolesAt(0, 0, zag, 90)
+            with self.saved_context():
+                self.moveTo(f / 2, 0)
+                for x in sx[:-1]:
+                    self.moveTo(x + f, 0)
+                    self.fingerHolesAt(0, 0, zag, 90)
+
+            # golden ratio is 1.61803398875
+
+            with self.saved_context():
+                # self.moveTo(f / 2, 0)
+                assert len(set(sx)) == 1, "cutouts only ok if all equal"
+
+                n_cutouts = 2
+                space_plus_drawer = (sx[0] + f) / n_cutouts
+
+                cutout_width = sx[0] / 3
+                space = space_plus_drawer - cutout_width
+
+                cutout_height = a / 10
+
+                import scipy.constants
+
+                distance_from_bottom = a * 0.3
+
+                self.moveTo(
+                    space / 2 + f / 2, f + a - cutout_height - distance_from_bottom
+                )
+                for _ in range(len(sx) * n_cutouts):
+                    self.front_cutout(cutout_width, cutout_height)
+                    self.moveTo(cutout_width, 0)
+                    self.moveTo(space, 0)
 
         return Element.from_item(w).add_render(internals).close_part()
+
+    @holeCol
+    def front_cutout(self, cutout_width, cutout_height):
+        self.moveTo(cutout_height / 2, 0)
+
+        self.edge(cutout_width - cutout_height)
+        self.corner(180, cutout_height / 2)
+        self.edge(cutout_width - cutout_height)
+        self.corner(180, cutout_height / 2)
 
     @inject_shortcuts
     def bottom_floor(self, sx, gap, d, f) -> Element:
@@ -483,7 +535,7 @@ class MailRack(RaiBase):
             self.wall_builder("back")
             .add(xedges, 90)
             .add(yedges, 90)
-            .add(xedges.length, 90, PLAIN)
+            .add(xedges.length, 90, "G")  # <- mounting edge
             .add(reversed(yedges), 90)
         )
 

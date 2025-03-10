@@ -56,11 +56,47 @@ class MailRack(RaiBase):
         # self.add_float_arg("floor_depth", 30)
         # self.add_str_arg("middle_style", "pockets")
 
-        self.buildArgParser(sh="120*2", sx="240*3")
-        self.add_float_arg("alpha_deg", 60)
+        self.buildArgParser(sh="150*2", sx="240*3")
+        self.add_float_arg("alpha_deg", 70)
         self.add_float_arg("side_angled_length", 150)
-        self.add_float_arg("floor_depth", 50)
-        self.add_str_arg("middle_style", "pockets")
+        self.add_float_arg("floor_depth", 20)
+        self.argparser.add_argument(
+            "--middle_style",
+            action="store",
+            type=str,
+            help="How to handle middle floors. Pockets: make cutouts for middle floors in sides & left/right separators. Fingerjoints: split each middle floor into one piece for each horizontal split. Attach them into finger holes.",
+            choices=["pockets", "fingerholes"],
+            default="pockets",
+        )
+        self.argparser.add_argument(
+            "--top_style",
+            action="store",
+            type=str,
+            help="What to do about the top (open) shelf. Continuous: extend diagonal line of opening until touching back. Symmetric (only for equally tall shelves): make opening 'zig' as large as in all other shelves, then cut off horizontally.",
+            choices=["continuous", "symmetric"],
+            default="symmetric",
+        )
+        self.argparser.add_argument(
+            "--nameplate_slot_width",
+            action="store",
+            type=float,
+            default=20,  # <- for nameplate
+            help="Width of nameplate slots, set to 0 to disable.",
+        )
+        self.argparser.add_argument(
+            "--nameplate_slot_depth",
+            action="store",
+            type=float,
+            default=3,
+            help="todo",
+        )
+        self.argparser.add_argument(
+            "--nameplate_slot_distance",
+            action="store",
+            type=float,
+            default=60,
+            help="Distance of nameplate slots.",
+        )
 
     @property
     def shortcuts(self):
@@ -70,19 +106,24 @@ class MailRack(RaiBase):
         d = self.floor_depth
         a = self.side_angled_length
         sin_a, cos_a = sin(alpha_rad), cos(alpha_rad)
-
-        hat_length = (d + a * cos_a) / sin_a
-
-        # right-angle triangles:
-        # 1. front length, hat length, [diagonal]
-        # 2. floor depth, (hat height + spacer), [diagonal]
-        hat_height = sqrt(a**2 + hat_length**2 - d**2)
-
-        sheff = sh + [hat_height]
+        top_style = self.top_style
 
         zigzags: list[tuple[float, float]] = [
             tuple(coord(cos_a, sin_a) * (h + f)) for h in sh
         ]
+
+        if top_style == "continuous":
+            self.hat_length = (d + a * cos_a) / sin_a
+            # right-angle triangles:
+            # 1. front length, hat length, [diagonal]
+            # 2. floor depth, (hat height + spacer), [diagonal]
+            hat_height = sqrt(a**2 + self.hat_length**2 - d**2)
+        if top_style == "symmetric":
+            zig = zigzags[0][0]
+            self.hat_horizontal = d + a * cos_a - zig * sin_a
+            hat_height = zig * cos_a + a * sin_a
+
+        sheff = sh + [hat_height]
         return dict(
             f=f,
             sx=self.sx,
@@ -93,16 +134,19 @@ class MailRack(RaiBase):
             sin_a=sin_a,
             cos_a=cos_a,
             angle_rad=alpha_rad,
-            hat_length=hat_length,
             hat_height=hat_height,
             sheff=sheff,
             gap=Section(f, PLAIN, text="f"),
             zigzags=zigzags,
             middle_style=self.middle_style,
+            top_style=self.top_style,
         )
 
     def setup(self):
         assert self.middle_style in ("pockets", "fingerholes")
+        assert self.top_style in ("continuous", "symmetric")
+        if self.top_style == "symmetric":
+            assert len(set(self.sh)) == 1
 
         # logging.getLogger("SkippingFingerJoint").setLevel(logging.DEBUG)
         # logging.basicConfig(level=logging.DEBUG)
@@ -110,6 +154,7 @@ class MailRack(RaiBase):
         s = self.make_angled_finger_joint_settings(self.alpha_deg)
         self.edges[ANGLED_POS] = FingerJointEdge(self, s)
         self.edges[ANGLED_NEG] = FingerJointEdgeCounterPart(self, s)
+        # self.angled_finger_holes = FingerHoles(s)
 
         s = self.make_standard_finger_joint_settings()
         self.edges[SKIP_EVEN] = SkippingFingerJoint(
@@ -126,6 +171,11 @@ class MailRack(RaiBase):
         self.setup()
 
         self.ctx.set_line_width(1)
+
+        # self.xstack(self.back(), self.side()).do_render()
+        # self.side().do_render()
+
+        ################## full render
 
         # To render all, need:
         #   - `back`
@@ -172,13 +222,16 @@ class MailRack(RaiBase):
         d,
         f,
         gap,
-        hat_length,
         sh,
         sheff,
         zigzags,
         middle_style,
+        top_style,
+        cos_a,
+        sin_a,
     ) -> Element:
         w = self.wall_builder("side")
+
         w.add(d, alpha_deg, FINGER, text=mark("floor=d"))
 
         #### bottom cover options
@@ -207,8 +260,16 @@ class MailRack(RaiBase):
             zigzag_corners.append(w.position)
             w.add(zag, 90, FINGER, text=mark("zag"))
 
-        # now go all the way from current x to x=0
-        w.add(hat_length, 180 - alpha_deg, PLAIN, text=mark("topside"))
+        if top_style == "continuous":
+            # now go all the way from current x to x=0
+            w.add(self.hat_length, 180 - alpha_deg, PLAIN, text=mark("topside"))
+        if top_style == "symmetric":
+            # all zigs & zags are the same because this only works with equally-sized
+            # shelves
+            w.add(zig, 90 - alpha_deg, PLAIN, text=mark("topside"))
+            w.add(
+                d + a * cos_a - zig * sin_a, 90, PLAIN, text=mark("topside horizontal")
+            )
 
         # now all the way down.
         if middle_style == "fingerholes":
@@ -273,11 +334,6 @@ class MailRack(RaiBase):
     @inject_shortcuts
     def front(self, xi, yi, gap, sx, a, zigzags, f) -> Element:
         assert xi == 0
-        # NOTE: this is the *first one* - it uses size of first drawer's zig/zag
-        # horizontal: same sections as on X on back
-        mouth_edges = Compound.intersperse(
-            gap, make_sections(sx, "mouth", PLAIN), start=True, end=True
-        )
         # xxx: reuse zig on level 0
         if yi == 0:
             _zig, zag = zigzags[0]
@@ -289,12 +345,43 @@ class MailRack(RaiBase):
                 Section(a - zag, PLAIN, text=mark("front counterzag")),
             ]
         )
-        w = self.wall_builder(f"front{yi}").add(mouth_edges, 90).add(side, 90)
+        w = self.wall_builder(f"front{yi}")
 
-        # add with pockets
+        ###### front edge ######
+        if self.nameplate_slot_width:
+            # nameplates: 2*nameplate_slot_width +
+            def _section(x, last=False):
+                leftover = (
+                    x - 2 * self.nameplate_slot_width - self.nameplate_slot_distance
+                )
+                w.add(leftover / 2, 90, PLAIN)
+                w.add(self.nameplate_slot_depth, -90, PLAIN)
+                w.add(self.nameplate_slot_width, -90, PLAIN)
+                w.add(self.nameplate_slot_depth, 90, PLAIN)
+                w.add(self.nameplate_slot_distance, 90, PLAIN)
+                w.add(self.nameplate_slot_depth, -90, PLAIN)
+                w.add(self.nameplate_slot_width, -90, PLAIN)
+                w.add(self.nameplate_slot_depth, 90, PLAIN)
+                w.add(leftover / 2, 0, PLAIN)
+
+            for x in sx:
+                w.add(gap, 0)
+                _section(x)
+            w.add(gap, 90)
+
+        else:
+            mouth_edges = Compound.intersperse(
+                gap, make_sections(sx, "mouth", PLAIN), start=True, end=True
+            )
+            w.add(mouth_edges, 90)
+
+        ###### end front edge ######
+
+        w.add(side, 90)
+
         w.add(gap, 0)
         for x in sx[:-1]:
-            w.add(sx[0], 90, ANGLED_NEG)
+            w.add(x, 90, ANGLED_NEG)
             w.add(a - zag, -90, PLAIN)
             w.add(f, -90, PLAIN)
             w.add(a - zag, 90, PLAIN)

@@ -515,6 +515,7 @@ class WallBuilder:
     angle: float = 0
     items: list[WallItem] = dataclasses.field(default_factory=list)
     position: np.array = dataclasses.field(default_factory=lambda: np.zeros(2))
+    initial_angle: float = 0
 
     @property
     def vector(self) -> np.array:
@@ -636,6 +637,9 @@ class WallBuilder:
 
     def render(self, move=None, callback=None, turtle=True, correct_corners=True):
         # print(f"Rendering WallBuilder {self.label}:")
+
+        # xxx: hack to allow starting with non-horizontal wall
+        self.boxes.moveTo(0, 0, self.initial_angle)
 
         if self.boxes.debug:
             assert callback is None, "TODO: combine callbacks"

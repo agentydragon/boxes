@@ -705,6 +705,18 @@ class Element:
 
         return Element(position=coord(0, 0), bbox=bbox, render=[render], boxes=boxes)
 
+    def mirror(self):
+        def render():
+            self.boxes.ctx.scale(-1, 1)
+            self.do_render()
+
+        return Element(
+            position=self.position,
+            bbox=self.bbox,
+            render=[render],
+            boxes=self.boxes,
+        )
+
 
 ##### unit tests ####
 

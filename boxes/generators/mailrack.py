@@ -57,10 +57,12 @@ class MailRack(RaiBase):
         # self.add_float_arg("floor_depth", 30)
         # self.add_str_arg("middle_style", "pockets")
 
-        self.buildArgParser(sh="150*2", sx="240*3")
+        self.buildArgParser(
+            sh="140*2", sx="240*3"
+        )  # TODO: some cominations aren't compatible; document
         self.add_float_arg("alpha_deg", 70)
         self.add_float_arg("side_angled_length", 150)
-        self.add_float_arg("floor_depth", 20)
+        self.add_float_arg("floor_depth", 40)
         self.argparser.add_argument(
             "--middle_style",
             action="store",

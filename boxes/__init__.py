@@ -20,6 +20,7 @@ import copy
 import datetime
 import gettext
 import inspect
+import logging
 import math
 import random
 import re
@@ -1237,6 +1238,9 @@ class Boxes:
         if not dontdraw:
             if before:
                 # paint debug rectangle
+                import traceback
+
+                #traceback.print_stack()
                 if self.debug:
                    with self.saved_context():
                        self.set_source_color(Color.ANNOTATIONS)
@@ -2849,6 +2853,8 @@ class Boxes:
 
             self.moveTo(-minx, -miny)
 
+        logger = logging.getLogger("polygonWall")
+
         length_correction = 0.
         for i in range(0, len(borders), 2):
             self.cc(callback, i // 2)
@@ -2865,6 +2871,12 @@ class Boxes:
             edge = edges[(i//2)%len(edges)]
             edge(l)
             self.edge(length_correction)
+            msg = f"{l=} "
+            if length_correction:
+                msg += f"l_corr={length_correction} "
+            if next_angle:
+                msg += f"{next_angle=}"
+            logger.info(msg)
             self.corner(next_angle, tabs=1)
 
         if not turtle:

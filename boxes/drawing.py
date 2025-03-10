@@ -512,6 +512,14 @@ class SVGSurface(Surface):
         tree = ET.ElementTree(svg)
 
         self._add_metadata(svg)
+        
+
+        # (Rai) white background
+        ET.SubElement(svg, "rect",
+                      x="0", y="0",
+                      width=f"{w:.2f}",
+                      height=f"{h:.2f}",
+                      fill="#FFFFFF")
 
         for i, part in enumerate(self.parts):
             if not part.pathes:

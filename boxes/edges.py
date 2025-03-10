@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import logging
 import math
 import re
 from abc import ABC, abstractmethod
@@ -965,7 +966,13 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
         else:
             self.polyline(0, 90, h, -90, f, -90, h, 90)
 
+    def __init__(self, *args, **kw) -> None:
+        super().__init__(*args, **kw)
+        self.logger = logging.getLogger("finger")
+
     def __call__(self, length, bedBolts=None, bedBoltSettings=None, **kw):
+
+        self.logger.info(f"FingerJointEdge.call({length=}, {kw=})")
 
         positive = self.positive
         t = self.settings.thickness
@@ -976,6 +983,7 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
         play = self.settings.play
 
         fingers, leftover = self.calcFingers(length, bedBolts)
+        self.logger.info(f"  {fingers=} {leftover=}")
 
         # not enough space for normal fingers - use small rectangular one
         if (fingers == 0 and f and
@@ -994,6 +1002,7 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
 
         l1, l2 = self.fingerLength(self.settings.angle)
         h = l1 - l2
+        self.logger.info(f"  {l1=} {l2=} {h=}")
 
         d = (bedBoltSettings or self.bedBoltSettings)[0]
 
@@ -1011,6 +1020,7 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
                              positive, i < fingers // 2)
 
         self.edge(leftover / 2.0, tabs=1)
+        self.logger.info("")
 
     def margin(self) -> float:
         """ """

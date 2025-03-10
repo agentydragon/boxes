@@ -21,6 +21,7 @@ from boxes.generators.raibase import (
     Section,
     SkippingFingerJoint,
     coord,
+    fmt,
     inject_shortcuts,
 )
 

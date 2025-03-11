@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from numbers import Number
 import contextlib
 import dataclasses
 import functools
@@ -39,6 +40,10 @@ def fmt(x, show_sign=False):
     if show_sign and x >= 0:
         s = "+" + s
     return s
+
+
+def fmt_mm(x):
+    return f"{fmt(x)}mm"
 
 
 class SkippingFingerJoint(FingerJointEdge):
@@ -561,6 +566,7 @@ class WallBuilder:
 
             must not have `edge`, `text`.
         """
+        assert angle is None or isinstance(angle, Number), f"{angle=} must be None or a number"
 
         match what:
             case int() | float() as length:

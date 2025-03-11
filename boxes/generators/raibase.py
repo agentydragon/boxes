@@ -605,6 +605,7 @@ class WallBuilder:
                 # for some reason boxes.py is picky about this
                 delta += 360
             borders.extend((item.length, delta))
+        borders.append(None) # TODO: configurable?
         return borders
 
     def rendering_table(self):

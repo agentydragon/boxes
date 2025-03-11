@@ -1443,6 +1443,7 @@ class Boxes:
         :param d_head: diameter of the screw head
         :param angle: rotation angle of the hole
         """
+        print(f"mounting hole {d_head=}")
 
         if d_shaft < (2 * self.burn):
             return  # no hole if diameter is smaller then the capabilities of the machine

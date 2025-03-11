@@ -10,9 +10,18 @@ scripts/boxes MailRack --Mounting_style='straight edge, extended'
 scripts/boxes MailRack --Mounting_num=3
 
 scripts/boxes MailRack --preset=15leroy
+
+mounting screw:
+    3.45mm shaft diameter
+    5.48mm head diameter
+
 scripts/boxes MailRack --preset=test-noplate
 
 scripts/boxes MailRack --preset=test-noplate --format=lbrn2 --output=/home/agentydragon/test-noplate.lbrn2
+
+scripts/boxes MailRack --preset=15leroy
+scripts/boxes MailRack --preset=15leroy --format=lbrn2 --output=/home/agentydragon/15leroy.lbrn2
+
 """
 
 from __future__ import annotations
@@ -85,6 +94,14 @@ class MailRack(RaiBase):
         self.add_float_arg("alpha_deg", 60)
         self.add_float_arg("side_angled_length", 170)
         self.add_float_arg("floor_depth", 50)
+        self.add_float_arg("cutout_height", 10)
+        self.add_float_arg("d_from_bottom", 30)
+        self.argparser.add_argument(
+            "--n_cutouts",
+            action="store",
+            type=int,
+            default=2,
+        )
         self.argparser.add_argument(
             "--middle_style",
             action="store",
@@ -205,12 +222,14 @@ class MailRack(RaiBase):
     def apply_preset(self):
         if not self.preset:
             return
+        me = self.edgesettings["Mounting"]
+
         self.reference = 0
         self.thickness = 3.175 # 1/8 inch
         self.top_style = "symmetric"
         self.middle_style = MIDDLE_POCKETS_IN_FINGERS_OUT
         if self.preset == "15leroy":
-            self.sh = [170] * 2
+            self.sh = [160] * 2
             self.sx = [240] * 3
             self.alpha_deg = 60
             self.side_angled_length = 170
@@ -219,7 +238,16 @@ class MailRack(RaiBase):
             self.plate_slot_width = 20
             self.plate_slot_distance = 60
             self.plate_slot_depth = self.thickness
+            self.d_from_bottom = 20 
+            self.cutout_height = 15 
+            self.cutout_width = 70
+
+            me["d_shaft"] = 3.6 # 3.45 plus margin
+            me["d_head"] = 6.5 # 5.48 plus margin
+            me["num"] = 2 #len(self.sx)
         elif self.preset == "test-noplate":
+            self.d_from_bottom = 50
+            self.cutout_height = 5
             self.sh = [40] * 2
             self.sx = [30] * 3
             self.alpha_deg = 60
@@ -229,6 +257,7 @@ class MailRack(RaiBase):
             self.plate_slot_width = 0
             self.plate_slot_distance = 0
             self.plate_slot_depth = 0
+
         else:
             raise ValueError()
 
@@ -236,11 +265,14 @@ class MailRack(RaiBase):
     @inject_shortcuts
     def render(self, sheff):
         self.setup()
+        if self.cutout_width == "equal":
+            # TODO: check stuff etc.
+            space_plus_drawer = (self.sx[0] + self.f) / self.n_cutouts
+            self.cutout_width = space_plus_drawer / 2
+
+        print(f"Cutout: {self.cutout_width} x {fmt_mm(self.cutout_height)}")
 
         # self.ctx.set_line_width(1)
-
-        # self.xstack(self.back(), self.side()).do_render()
-        # self.side().do_render()
 
         ################## full render
 
@@ -259,25 +291,22 @@ class MailRack(RaiBase):
         elems.append(back)
 
         stack = self.ystack(
-        #    self.midfloors(),
-            self.front(0),
-            self.front(1),
-            #*(self.front(yi) for yi in range(len(sheff))),
+            self.midfloors(),
             *(self.front(yi) for yi in range(len(sheff))),
-        #    self.bottom_floor(),
+            self.bottom_floor(),
         )
         stack = stack.translate(coord(0, -stack.height - self.spacing - back.height))
         elems.append(stack)
 
         # divide sides to left/right
-        #all_sides = [self.side(is_inner=False) for _ in range(2)] + [self.side(is_inner=True) for _ in range(len(self.sx) - 1)]
-        #print(f"depth: {fmt_mm(all_sides[0].width)}")
-        #split = len(all_sides) // 2
-        #sides = Element.union(self, [
-        #    self.ystack(all_sides[split:]).mirror().translate(coord(-3 * self.spacing, 0)),
-        #    self.ystack(all_sides[:split]).translate(coord(back.width + 3 * self.spacing, 0)),
-        #])
-        #elems.append(sides.translate(coord(0, -sides.height)))
+        all_sides = [self.side(is_inner=False) for _ in range(2)] + [self.side(is_inner=True) for _ in range(len(self.sx) - 1)]
+        print(f"depth: {fmt_mm(all_sides[0].width)}")
+        split = len(all_sides) // 2
+        sides = Element.union(self, [
+            self.ystack(all_sides[split:]).mirror().translate(coord(-3 * self.spacing, 0)),
+            self.ystack(all_sides[:split]).translate(coord(back.width + 3 * self.spacing, 0)),
+        ])
+        elems.append(sides.translate(coord(0, -sides.height)))
 
         full = Element.union(self, elems)
         print(f"Cut material size: {fmt_mm(full.width)} x {fmt_mm(full.height)}")
@@ -494,22 +523,18 @@ class MailRack(RaiBase):
                 # self.moveTo(f / 2, 0)
                 assert len(set(sx)) == 1, "cutouts only ok if all equal"
 
-                n_cutouts = 2
-                space_plus_drawer = (sx[0] + f) / n_cutouts
+                space_plus_drawer = (sx[0] + f) / self.n_cutouts
 
-                cutout_width = sx[0] / 3
-                space = space_plus_drawer - cutout_width
+                space = space_plus_drawer - self.cutout_width
+                self.moveTo( space / 2 + f / 2, 0)
+                # if rendered now, the cutout's top edge would be aligned with drawer's top edge.
 
-                cutout_height = a / 10
+                self.moveTo(0, -self.cutout_height + zag - self.d_from_bottom)
+                
 
-                distance_from_bottom = a * 0.3
-
-                self.moveTo(
-                    space / 2 + f / 2, f + a - cutout_height - distance_from_bottom
-                )
-                for _ in range(len(sx) * n_cutouts):
-                    self.front_cutout(cutout_width, cutout_height)
-                    self.moveTo(cutout_width, 0)
+                for _ in range(len(sx) * self.n_cutouts):
+                    self.front_cutout(self.cutout_width, self.cutout_height)
+                    self.moveTo(self.cutout_width, 0)
                     self.moveTo(space, 0)
 
         return Element.from_item(w).add_render(internals).close_part()

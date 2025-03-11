@@ -18,6 +18,7 @@ import tabulate
 from boxes import Boxes, Color
 from boxes.edges import FingerJointEdge, FingerJointSettings
 
+PLAIN = "e"
 DEG_SIGN = "°"
 ALPHA_SIGN = "α"
 
@@ -521,6 +522,15 @@ class WallBuilder:
     def vector(self) -> np.array:
         return coord(cos(self.angle), sin(self.angle))
 
+    def slot(self, depth: float, length: float):
+        """Start: facing into slot. End: facing continuation."""
+        assert isinstance(depth, (int, float))
+        assert isinstance(length, (int, float))
+        self.add(depth, -90, PLAIN)
+        self.add(length, -90, PLAIN)
+        self.add(depth, 90, PLAIN)
+
+
     def add(
         self,
         what: float | Section | Compound,
@@ -695,6 +705,14 @@ class Element:
     bbox: BBox
     render: list[callable]
     boxes: Boxes
+
+    @property
+    def height(self):
+        return self.bbox.height
+
+    @property
+    def width(self):
+        return self.bbox.width
 
     def __post_init__(self):
         assert isinstance(self.position, np.ndarray)

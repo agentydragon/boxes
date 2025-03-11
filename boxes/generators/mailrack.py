@@ -8,6 +8,9 @@ scripts/boxes MailRack --Mounting_style='mounting tab'
 scripts/boxes MailRack --Mounting_style='straight edge, extended'
 
 scripts/boxes MailRack --Mounting_num=3
+
+scripts/boxes MailRack --preset=15leroy
+scripts/boxes MailRack --preset=test-noplate
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from boxes.edges import (
 )
 from boxes.generators.raibase import (
     ALPHA_SIGN,
+    PLAIN,
     DEG_SIGN,
     Compound,
     Element,
@@ -37,7 +41,6 @@ from boxes.generators.raibase import (
     inject_shortcuts,
 )
 
-PLAIN = "e"
 FINGER = "f"
 FINGER_COUNTER = "F"
 ANGLED_POS = "b"
@@ -93,27 +96,33 @@ class MailRack(RaiBase):
             default="symmetric",
         )
         self.argparser.add_argument(
-            "--nameplate_slot_width",
+            "--plate_slot_width",
             action="store",
             type=float,
             default=20,  # <- for nameplate
-            help="Width of nameplate slots, set to 0 to disable.",
+            help="Width of plate slots, set to 0 to disable.",
         )
         self.argparser.add_argument(
-            "--nameplate_slot_depth",
+            "--plate_slot_depth",
             action="store",
             type=float,
             default=3,
             help="todo",
         )
         self.argparser.add_argument(
-            "--nameplate_slot_distance",
+            "--plate_slot_distance",
             action="store",
             type=float,
             default=60,
             help="Distance of nameplate slots.",
         )
         self.addSettingsArgs(MountingSettings)
+        self.argparser.add_argument(
+            "--preset",
+            action="store",
+            type=str,
+            default="",
+        )
 
     @property
     def shortcuts(self):
@@ -184,10 +193,45 @@ class MailRack(RaiBase):
             self, s, idx_predicate=lambda i: i % 2 == 1, reversed=True
         )
 
+    def open(self):
+        self.apply_preset()
+        super().open()
+
+    def apply_preset(self):
+        if not self.preset:
+            return
+        self.reference = 0
+        self.thickness = 3.175 # 1/8 inch
+        self.middle_style = "pockets"
+        self.top_style = "symmetric"
+        if self.preset == "15leroy":
+            self.sh = [170] * 2
+            self.sx = [240] * 3
+            self.alpha_deg = 60
+            self.side_angled_length = 170
+            self.floor_depth = 50
+
+            self.plate_slot_width = 20
+            self.plate_slot_distance = 60
+            self.plate_slot_depth = self.thickness
+        elif self.preset == "test-noplate":
+            self.sh = [40] * 2
+            self.sx = [30] * 3
+            self.alpha_deg = 60
+            self.side_angled_length = 50
+            self.floor_depth = 30
+
+            self.plate_slot_width = 0
+            self.plate_slot_distance = 0
+            self.plate_slot_depth = 0
+        else:
+            raise ValueError()
+
+
     def render(self):
         self.setup()
 
-        self.ctx.set_line_width(1)
+        # self.ctx.set_line_width(1)
 
         # self.xstack(self.back(), self.side()).do_render()
         # self.side().do_render()
@@ -201,36 +245,32 @@ class MailRack(RaiBase):
         #   - `all_fronts`
         #   - len(sx)+1 copies of `side`
 
-        y = 0
-
-        def _stack_y(element):
-            nonlocal y
-            y -= element.bbox.height + self.spacing
-            element.translate(coord(0, y)).do_render()
+        elems = []
 
         back = self.back()
-        print(f"width {fmt(back.bbox.width)} mm, height {fmt(back.bbox.height)} mm")
-        _stack_y(back)
-        _stack_y(
-            self.ystack(
-                self.midfloors().translate(coord(-self.thickness, 0)),
-                self.all_fronts(),
-                self.bottom_floor(),
-            )
+        print(f"width {fmt(back.width)} mm, height {fmt(back.height)} mm")
+        back = back.translate(coord(0, -back.height))
+        elems.append(back)
+
+        stack = self.ystack(
+            self.midfloors().translate(coord(-self.thickness, 0)),
+            self.all_fronts(),
+            self.bottom_floor(),
         )
+        stack = stack.translate(coord(0, -stack.height - self.spacing - back.height))
+        elems.append(stack)
 
         # divide sides to left/right
         all_sides = [self.side() for _ in range(len(self.sx) + 1)]
-        print(f"depth: {fmt(all_sides[0].bbox.width)} mm")
+        print(f"depth: {fmt(all_sides[0].width)} mm")
         split = len(all_sides) // 2
-        on_left, on_right = all_sides[:split], all_sides[split:]
+        sides = Element.union(self, [
+            self.ystack(all_sides[split:]).mirror().translate(coord(-3 * self.spacing, 0)),
+            self.ystack(all_sides[:split]).translate(coord(back.width + 3 * self.spacing, 0)),
+        ])
+        elems.append(sides.translate(coord(0, -sides.height)))
 
-        right = self.ystack(on_right).translate(
-            coord(back.bbox.width + 3 * self.spacing, 0)
-        )
-        left = self.ystack(on_left).mirror().translate(coord(-3 * self.spacing, 0))
-        e = Element.union(self, [left, right]).translate(coord(0, 0))
-        e.translate(coord(0, -e.bbox.height)).do_render()
+        Element.union(self, elems).do_render()
 
     @inject_shortcuts
     def side(
@@ -353,6 +393,10 @@ class MailRack(RaiBase):
     @inject_shortcuts
     def front(self, xi, yi, gap, sx, a, zigzags, f) -> Element:
         assert xi == 0
+
+        # expected width of front section
+        expected_width = (f*(len(sx)+1) + sum(sx))
+
         # xxx: reuse zig on level 0
         if yi == 0:
             _zig, zag = zigzags[0]
@@ -366,26 +410,21 @@ class MailRack(RaiBase):
         )
         w = self.wall_builder(f"front{yi}")
 
-        ###### front edge ######
-        if self.nameplate_slot_width:
-            # nameplates: 2*nameplate_slot_width +
-            def _section(x, last=False):
-                leftover = (
-                    x - 2 * self.nameplate_slot_width - self.nameplate_slot_distance
-                )
-                w.add(leftover / 2, 90, PLAIN)
-                w.add(self.nameplate_slot_depth, -90, PLAIN)
-                w.add(self.nameplate_slot_width, -90, PLAIN)
-                w.add(self.nameplate_slot_depth, 90, PLAIN)
-                w.add(self.nameplate_slot_distance, 90, PLAIN)
-                w.add(self.nameplate_slot_depth, -90, PLAIN)
-                w.add(self.nameplate_slot_width, -90, PLAIN)
-                w.add(self.nameplate_slot_depth, 90, PLAIN)
-                w.add(leftover / 2, 0, PLAIN)
 
+        ###### front edge ######
+        pos_start = w.position
+        print(f"{pos_start=}")
+
+        if self.plate_slot_width:
+            swidth, sdist, sdepth = self.plate_slot_width, self.plate_slot_distance, self.plate_slot_depth
             for x in sx:
                 w.add(gap, 0)
-                _section(x)
+                leftover = x - 2 * swidth - sdist
+                w.add(leftover / 2, 90, PLAIN)
+                w.slot(sdepth, swidth)
+                w.add(sdist, 90, PLAIN)
+                w.slot(sdepth, swidth)
+                w.add(leftover / 2, 0, PLAIN)
             w.add(gap, 90)
 
         else:
@@ -394,16 +433,19 @@ class MailRack(RaiBase):
             )
             w.add(mouth_edges, 90)
 
+        pos_end = w.position
         ###### end front edge ######
+        print(f"=> {pos_end=}")
+        assert_that(float((pos_end - pos_start)[0]), close_to(
+            f*(len(sx)+1) + sum(sx), 0.01
+        ))
 
         w.add(side, 90)
 
         w.add(gap, 0)
         for x in sx[:-1]:
             w.add(x, 90, ANGLED_NEG)
-            w.add(a - zag, -90, PLAIN)
-            w.add(f, -90, PLAIN)
-            w.add(a - zag, 90, PLAIN)
+            w.slot(depth=(a-zag), length=f)
         w.add(sx[-1], 0, ANGLED_NEG)
         w.add(gap, 90)
 
@@ -430,8 +472,6 @@ class MailRack(RaiBase):
                 space = space_plus_drawer - cutout_width
 
                 cutout_height = a / 10
-
-                import scipy.constants
 
                 distance_from_bottom = a * 0.3
 

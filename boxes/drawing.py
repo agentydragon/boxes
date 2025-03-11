@@ -273,6 +273,7 @@ class Context:
         self._xy = (0, 0)
 
     def scale(self, sx, sy):
+        print("scale {sx=} {sy=}")
         self._m *= Affine.scale(sx, sy)
 
     def rotate(self, r):

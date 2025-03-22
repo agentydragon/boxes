@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import colorsys
 from numbers import Number
 import contextlib
 import dataclasses
@@ -17,11 +18,20 @@ import numpy as np
 import tabulate
 
 from boxes import Boxes, Color
-from boxes.edges import FingerJointEdge, FingerJointSettings
+from boxes.edges import FingerJointEdge, FingerJointSettings, BaseEdge
 
 PLAIN = "e"
 DEG_SIGN = "°"
 ALPHA_SIGN = "α"
+
+
+def random_color():
+    # Generate a random hue and saturation
+    h = random.random()  # Hue: 0-1
+    s = random.uniform(0.5, 1)  # Ensure some saturation (avoid washed-out colors)
+    v = random.uniform(0.6, 0.7)  # Avoid too-bright colors that blend into white
+    # Convert HSV to RGB
+    return colorsys.hsv_to_rgb(h, s, v)
 
 
 def coord(x, y):
@@ -273,10 +283,10 @@ class RaiBase(Boxes):
         )
 
     def random_color(self):
-        self.ctx.set_source_rgb(*random.choice(COLORS))
+        self.ctx.set_source_rgb(*random_color())
 
     def show_cc(self, i):
-        c = COLORS[i % len(COLORS)]
+        c = random_color()
         self.ctx.set_source_rgb(*c)
         self.text(str(i), color=c, fontsize=5)
         self.circle(0, 0, r=1)
@@ -311,9 +321,15 @@ class RaiBase(Boxes):
     ):
         assert orient in "xy"
         arranged = []
+
+        elements = list(elements)
+
         for e in elements:
+            # arrange all elements to be (0,0)-aligned
+            e = e.translate(coord(-e.bbox.minx, -e.bbox.miny))
+
             if arranged:
-                bbox = arranged[-1].bbox
+                bbox = Element.union(self, arranged).bbox
                 if orient == "y":
                     prev = coord(0, bbox.maxy + self.spacing)
                 if orient == "x":
@@ -395,7 +411,7 @@ COLORS = [
     (255, 0, 0),
     (0, 255, 0),
     (0, 0, 255),
-    (255, 255, 0),
+    # (255, 255, 0),
     (255, 0, 255),
     (0, 255, 255),
 ]
@@ -476,7 +492,7 @@ class Section:
             length = float(length)
         assert isinstance(length, (int, float))
 
-        assert isinstance(edge, str) and len(edge) == 1
+        assert (isinstance(edge, str) and len(edge) == 1) or isinstance(edge,BaseEdge)
         # assert edge in "efFaAbB", f"unknown {edge=}"
 
         self.length = length
@@ -522,6 +538,7 @@ class WallBuilder:
     items: list[WallItem] = dataclasses.field(default_factory=list)
     position: np.array = dataclasses.field(default_factory=lambda: np.zeros(2))
     initial_angle: float = 0
+    close: bool = True
 
     @property
     def vector(self) -> np.array:
@@ -592,7 +609,7 @@ class WallBuilder:
                     self.add(section, 0)
                 return self.add(compound[-1], angle)
             case _:
-                raise ValueError(f"Invalid what: {what}")
+                raise ValueError(f"Invalid {what = }")
 
     def get_borders(self):
         borders = []
@@ -605,7 +622,8 @@ class WallBuilder:
                 # for some reason boxes.py is picky about this
                 delta += 360
             borders.extend((item.length, delta))
-        borders.append(None) # TODO: configurable?
+        if self.close:
+            borders.append(None) # TODO: configurable?
         return borders
 
     def rendering_table(self):
@@ -647,7 +665,7 @@ class WallBuilder:
     @property
     def bbox(self) -> BBox:
         edges = self.get_edges()
-        edges = [self.boxes.edges[e] for e in edges]
+        edges = [self.boxes.edges.get(e, e) for e in edges]
         borders = self.boxes._closePolygon(self.get_borders())
         minx, miny, maxx, maxy = self.boxes._polygonWallExtend(borders, edges)
         return BBox(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
@@ -782,8 +800,12 @@ class Element:
             boxes=self.boxes,
         )
 
-    def close_part(self):
-        self.render.append(lambda: self.boxes.ctx.new_part())
+    def is_part(self, name: str):
+        self.render = [lambda: self.boxes.ctx.new_part(name)] + self.render
+        return self
+
+    def close_part(self, name: str):
+        self.render.append(lambda: self.boxes.ctx.new_part(name))
         return self
 
 

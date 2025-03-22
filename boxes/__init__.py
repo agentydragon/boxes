@@ -2840,6 +2840,9 @@ class Boxes:
         except TypeError:
             edges = [self.edges.get(edge, edge)]
 
+        print(f"polygonWall started, {len(borders) = }")
+        print(f"{borders = }")
+
         t = self.thickness # XXX edge.margin()
 
         borders = self._closePolygon(borders)
@@ -2879,6 +2882,8 @@ class Boxes:
                 msg += f"{next_angle=}"
             logger.info(msg)
             self.corner(next_angle, tabs=1)
+
+        print("polygonWall finished")
 
         if not turtle:
             self.move(tw, th, move, label=label)

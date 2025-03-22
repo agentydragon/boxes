@@ -88,7 +88,9 @@ class Surface:
 
     def new_part(self, name="part"):
         if self.parts and len(self.parts[-1].pathes) == 0:
+            print(f"not making new part {name=} - reusing {self._p.name} because no edges")
             return self._p
+        print(f"making new part {name=}")
         p = Part(name)
         self.parts.append(p)
         self._p = p
@@ -116,6 +118,7 @@ class Part:
     def __init__(self, name) -> None:
         self.pathes: list[Any] = []
         self.path: list[Any] = []
+        self.name = name
 
     def extents(self):
         if not self.pathes:
@@ -402,8 +405,8 @@ class Context:
         # self.stroke()
 
     ## additional methods
-    def new_part(self):
-        self._dwg.new_part()
+    def new_part(self, *args, **kwargs):
+        self._dwg.new_part(*args, **kwargs)
 
 
 class SVGSurface(Surface):
@@ -525,6 +528,7 @@ class SVGSurface(Surface):
         for i, part in enumerate(self.parts):
             if not part.pathes:
                 continue
+            # parts represent to g
             g = ET.SubElement(svg, "g", id=f"p-{i}",
                               style="fill:none;stroke-linecap:round;stroke-linejoin:round;")
             g.text = "\n  "

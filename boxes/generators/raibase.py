@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import colorsys
-from numbers import Number
 import contextlib
 import dataclasses
 import functools
@@ -11,14 +10,16 @@ import logging
 import random
 from decimal import ROUND_HALF_UP, Decimal
 from math import cos, radians, sin
+from numbers import Number
 from textwrap import indent
 from typing import Iterable
 
 import numpy as np
 import tabulate
+from hamcrest import assert_that, contains_exactly, equal_to
 
 from boxes import Boxes, Color
-from boxes.edges import FingerJointEdge, FingerJointSettings, BaseEdge
+from boxes.edges import BaseEdge, FingerJointEdge, FingerJointSettings
 
 PLAIN = "e"
 DEG_SIGN = "°"
@@ -54,6 +55,16 @@ def fmt(x, show_sign=False):
 
 def fmt_mm(x):
     return f"{fmt(x)}mm"
+
+
+def fmt_deg(x):
+    return f"{fmt(x)}°"
+
+
+def fmt_reldeg(x):
+    if x == 0:
+        return "0"
+    return f"{fmt(x, show_sign=True)}°"
 
 
 class SkippingFingerJoint(FingerJointEdge):
@@ -422,82 +433,82 @@ COLORS = [
 #        return length / 2, recess
 
 
-@dataclasses.dataclass
-class WallItem:
-    section: Section
-
-    @property
-    def length(self):
-        return self.section.length
-
-    @property
-    def edge(self):
-        return self.section.edge
-
-    @property
-    def text(self):
-        return self.section.text
-
-    # start position
-    start: np.array
-    # end position
-    end: np.array
-
-    @property
-    def angle(self):
-        delta = self.end - self.start
-        angle = np.degrees(np.arctan2(delta[1], delta[0]))
-        return angle % 360
-
-    @property
-    def center(self):
-        return (self.start + self.end) / 2
-
-
-class Compound:
-    def __init__(self, sections: Iterable[Section]):
-        self.sections = list(sections)
-
-    @property
-    def length(self):
-        return sum(s.length for s in self.sections)
-
-    @classmethod
-    def intersperse(
-        cls,
-        sep: Section | Iterable[Section],
-        items: Iterable[Section],
-        start: bool,
-        end: bool,
-    ) -> Compound:
-        if isinstance(sep, Section):
-            sep = itertools.repeat(sep)
-        return cls(list(intersperse(sep, items, start=start, end=end)))
-
-    def __reversed__(self):
-        return Compound(reversed(self.sections))
-
-    def __iter__(self):
-        return iter(self.sections)
-
-    def __getitem__(self, key):
-        """implement index access and slicing"""
-        assert isinstance(key, (int, slice))
-        return self.sections[key]
-
-
-class Section:
-    def __init__(self, length, edge, text=None):
-        if isinstance(length, np.float64):
-            length = float(length)
-        assert isinstance(length, (int, float))
-
-        assert (isinstance(edge, str) and len(edge) == 1) or isinstance(edge,BaseEdge)
-        # assert edge in "efFaAbB", f"unknown {edge=}"
-
-        self.length = length
-        self.edge = edge
-        self.text = text
+###@dataclasses.dataclass
+###class WallItem:
+###    section: Section
+###
+###    @property
+###    def length(self):
+###        return self.section.length
+###
+###    @property
+###    def edge(self):
+###        return self.section.edge
+###
+###    @property
+###    def text(self):
+###        return self.section.text
+###
+###    # start position
+###    start: np.array
+###    # end position
+###    end: np.array
+###
+###    @property
+###    def angle(self):
+###        delta = self.end - self.start
+###        angle = np.degrees(np.arctan2(delta[1], delta[0]))
+###        return angle % 360
+###
+###    @property
+###    def center(self):
+###        return (self.start + self.end) / 2
+###
+###
+###class Compound:
+###    def __init__(self, sections: Iterable[Section]):
+###        self.sections = list(sections)
+###
+###    @property
+###    def length(self):
+###        return sum(s.length for s in self.sections)
+###
+###    @classmethod
+###    def intersperse(
+###        cls,
+###        sep: Section | Iterable[Section],
+###        items: Iterable[Section],
+###        start: bool,
+###        end: bool,
+###    ) -> Compound:
+###        if isinstance(sep, Section):
+###            sep = itertools.repeat(sep)
+###        return cls(list(intersperse(sep, items, start=start, end=end)))
+###
+###    def __reversed__(self):
+###        return Compound(reversed(self.sections))
+###
+###    def __iter__(self):
+###        return iter(self.sections)
+###
+###    def __getitem__(self, key):
+###        """implement index access and slicing"""
+###        assert isinstance(key, (int, slice))
+###        return self.sections[key]
+###
+###
+###class Section:
+###    def __init__(self, length, edge, text=None):
+###        if isinstance(length, np.float64):
+###            length = float(length)
+###        assert isinstance(length, (int, float))
+###
+###        assert (isinstance(edge, str) and len(edge) == 1) or isinstance(edge,BaseEdge)
+###        # assert edge in "efFaAbB", f"unknown {edge=}"
+###
+###        self.length = length
+###        self.edge = edge
+###        self.text = text
 
 
 def intersperse(sep, items, start: bool = False, end: bool = False):
@@ -509,21 +520,74 @@ def intersperse(sep, items, start: bool = False, end: bool = False):
       intersperse([1,2,3], [10,20,30], start=True, end=True)
         -> 10,1,20,2,30
     """
-    sep_iter = iter(sep)  # iterate sep so we can pull next-sep each time
+    # sep_iter = iter(sep)  # iterate sep so we can pull next-sep each time
     items_iter = iter(items)
 
     first = True
     for x in items_iter:
         if first and start:
-            yield next(sep_iter)
+            yield sep  # next(sep_iter)
 
         if not first:
-            yield next(sep_iter)
+            yield sep  # next(sep_iter)
         yield x
         first = False
 
     if end and not first:
-        yield next(sep_iter)
+        yield sep  # next(sep_iter)
+
+
+@dataclasses.dataclass
+class Turn:
+    angle: float
+
+
+@dataclasses.dataclass
+class Edge:
+    length: float
+    edge_type: str
+    text: str | None = None
+
+
+def Plain(*args, **kwargs):
+    return Edge(*args, **kwargs, edge_type="e")
+
+
+@dataclasses.dataclass
+class MultiEdge:
+    edges: list[Edge]
+
+
+class Close:
+    pass
+
+
+Command = Turn | Edge | Close | MultiEdge | list["Command"]
+
+
+def test_consolidate1():
+    w = WallBuilder(boxes=None, label="test").plain(10)
+    assert_that(w.commands, contains_exactly(Edge(10, "e")))
+    assert_that(w.consolidate(), contains_exactly((Edge(10, "e"), Turn(angle=0))))
+
+
+def test_consolidate2():
+    w = WallBuilder(boxes=None, label="test").plain(10).turn(50)
+    assert_that(w.commands, contains_exactly(Edge(10, "e"), Turn(50)))
+    assert_that(w.consolidate(), contains_exactly((Edge(10, "e"), Turn(angle=50))))
+
+
+def test_consolidate3():
+    w = WallBuilder(boxes=None, label="test").plain(10).turn(30).turn(30).plain(20)
+    assert_that(w.commands, contains_exactly(Edge(10, "e"), Turn(60), Edge(20, "e")))
+    assert_that(
+        w.consolidate(),
+        contains_exactly((Edge(10, "e"), Turn(60)), (Edge(20, "e"), Turn(0))),
+    )
+
+
+def _direction_vector(angle):
+    return np.array([cos(radians(angle)), sin(radians(angle))])
 
 
 @dataclasses.dataclass
@@ -535,10 +599,20 @@ class WallBuilder:
     boxes: Boxes
     label: str
     angle: float = 0
-    items: list[WallItem] = dataclasses.field(default_factory=list)
-    position: np.array = dataclasses.field(default_factory=lambda: np.zeros(2))
-    initial_angle: float = 0
-    close: bool = True
+    commands: list[Command] = dataclasses.field(default_factory=list)
+    _closed: bool = False
+
+    @property
+    def position(self):
+        position, angle = np.array([0, 0], dtype=float), 0
+        for c in self.commands:
+            if isinstance(c, Turn):
+                angle = (angle + c.angle) % 360
+                continue
+            if not isinstance(c, Edge):
+                raise ValueError(f"Unsupported {c = }")
+            position += c.length * _direction_vector(angle)
+        return position
 
     @property
     def vector(self) -> np.array:
@@ -548,160 +622,179 @@ class WallBuilder:
         """Start: facing into slot. End: facing continuation."""
         assert isinstance(depth, (int, float))
         assert isinstance(length, (int, float))
-        self.add(depth, -90, PLAIN)
-        self.add(length, -90, PLAIN)
-        self.add(depth, 90, PLAIN)
+        self.plain(depth).turn(-90).plain(length).turn(-90).plain(depth).turn(-90)
 
+    def plain(self, length: float) -> WallBuilder:
+        return self.edge(length, PLAIN)
 
-    def add(
-        self,
-        what: float | Section | Compound,
-        angle: float | None = None,
-        edge: str | None = None,
-        text: str | None = None,
-    ) -> WallBuilder:
-        """
-        Invocation options:
+    def edge(self, length: float, edge_type: str) -> WallBuilder:
+        return self.add(Edge(length, edge_type))
 
-        what: length ->
-            use `edge`, `text` to construct a Section
-            delegate to Section case, pass `angle` along.
+    def turn(self, angle: float) -> WallBuilder:
+        return self.add(Turn(angle))
 
-            must have `edge` set
+    def _add_one(self, command: Command):
+        if any(isinstance(i, Close) for i in self.commands):
+            raise ValueError("Cannot add to closed WallBuilder")
 
-        what: Section ->
-            use `length`, `edge`, `text` from Section
-            to construct a WallItem
+        match command:
+            case list():
+                self.add(*command)
 
-            must not have `edge`, `text`.
+            case Turn(angle) if self.commands and isinstance(self.commands[-1], Turn):
+                self.commands[-1].angle += angle
 
-            `angle` is 0 by default
+            case Turn() | Edge() | Close():
+                self.commands.append(command)
 
-        what: list[Section] ->
-            add each Section in turn.
-            apply `angle` only to the last one.
-
-            must not have `edge`, `text`.
-        """
-        assert angle is None or isinstance(angle, Number), f"{angle=} must be None or a number"
-
-        match what:
-            case int() | float() as length:
-                section = Section(length, edge, text)
-                return self.add(section, angle)
-            case Section() as section:
-                assert edge is None and text is None
-
-                next = self.position + section.length * self.vector
-                item = WallItem(
-                    section=section,
-                    start=self.position,
-                    end=next,
-                )
-                # print(f"  {item=}")
-                self.items.append(item)
-                self.angle += radians(angle)
-                self.position = next
-                return self
-            case Compound() as compound:
-                assert angle is not None
-                for section in compound[:-1]:
-                    self.add(section, 0)
-                return self.add(compound[-1], angle)
             case _:
-                raise ValueError(f"Invalid {what = }")
+                raise ValueError(f"Unhandled {command=}")
 
-    def get_borders(self):
-        borders = []
-        last_angle = 0
-        for i, item in enumerate(self.items):
-            next_item = self.items[(i + 1) % len(self.items)]
-            delta = next_item.angle - last_angle
-            last_angle = next_item.angle
-            if delta < 0:
-                # for some reason boxes.py is picky about this
-                delta += 360
-            borders.extend((item.length, delta))
-        if self.close:
-            borders.append(None) # TODO: configurable?
-        return borders
+    def add(self, *commands: Command | Iterable[Command]) -> WallBuilder:
+        for c in commands:
+            self._add_one(c)
+        return self
+
+    def close(self):
+        return self.add(Close())
+
+    def consolidate(self):
+        edge, turn = None, None
+
+        def _flush():
+            nonlocal edge, turn
+            if edge is not None:
+                yield (edge, turn or Turn(0))
+                edge, turn = None, None
+            else:
+                assert turn is None, f"{turn = } but should be None when flushing"
+
+        close = None
+
+        for c in self.commands:
+            if isinstance(c, Edge):
+                yield from _flush()
+                edge = c
+            elif isinstance(c, Turn):
+                assert turn is None
+                turn = c
+            elif isinstance(c, Close):
+                assert not close
+                close = c
+            else:
+                raise ValueError(f"Unhandled {x=}")
+
+        yield from _flush()
+
+    def borders_edges(self):
+        borders, edges = [], []
+        for edge_turn in self.consolidate():
+            if isinstance(edge_turn, Close):
+                edges.append(None)
+                continue
+            edge, turn = edge_turn
+            borders.extend((float(edge.length), float(turn.angle)))
+            edges.append(edge.edge_type)
+
+        return (
+            self.boxes._closePolygon(borders),
+            edges,
+        )
 
     def rendering_table(self):
         """display borders as passed to polygonWall."""
-        borders = self.get_borders()
-        edges = self.get_edges()
-
         rows = []
-        assert len(borders) == 2 * len(self.items)
-        for i, (item, edge) in enumerate(zip(self.items, edges)):
-            b_length = borders[2 * i]
-            b_angle = borders[2 * i + 1]
+        for edge_turn in self.consolidate():
+            if isinstance(edge_turn, Close):
+                rows.append(("Close", "", "", "", ""))
+                continue
+            edge, turn = edge_turn
             rows.append(
                 (
-                    f"{fmt(b_length)}",
-                    f"{fmt(b_angle, show_sign=True)}" if b_angle else "",
-                    item.text,
+                    f"{edge.edge_type}",
+                    fmt_mm(edge.length),
+                    fmt_reldeg(turn.angle),
+                    edge.text,
                     edge,
                 )
             )
-
         return tabulate.tabulate(
             rows,
-            headers=["D mm", f"{ALPHA_SIGN} {DEG_SIGN}", "Text", "Edge"],
+            headers=["type", "length", f"{ALPHA_SIGN} {DEG_SIGN}", "text", "edge"],
             showindex="always",
             tablefmt="presto",
         )
 
-    def get_edges(self):
-        return [i.edge for i in self.items]
+    # def surround(self, lengths, last_angle, positive_edge, gap_size, gap_edge):
+    #    lengths = list(lengths)
+    #    for l in lengths:
+    #        self.add(gap_size, 0, gap_edge)
+    #        self.add(l, 0, positive_edge)
+    #    self.add(gap_size, last_angle, gap_edge)
 
-    def surround(self, lengths, last_angle, positive_edge, gap_size, gap_edge):
-        lengths = list(lengths)
-        for l in lengths:
-            self.add(gap_size, 0, gap_edge)
-            self.add(l, 0, positive_edge)
-        self.add(gap_size, last_angle, gap_edge)
+    @property
+    def debug(self) -> bool:
+        return self.boxes.debug
 
     @property
     def bbox(self) -> BBox:
-        edges = self.get_edges()
-        edges = [self.boxes.edges.get(e, e) for e in edges]
-        borders = self.boxes._closePolygon(self.get_borders())
+        borders, edges = self.borders_edges()
+        edges = [self.boxes.edges.get(edge, edge) for edge in edges]
+        # print(f"{borders = }")
+        # print(f"{edges = }")
         minx, miny, maxx, maxy = self.boxes._polygonWallExtend(borders, edges)
         return BBox(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
 
-    def render(self, move=None, callback=None, turtle=True, correct_corners=True):
+    def _wall_debug_callback(self, i):
+        c = random_color()
+        self.boxes.ctx.set_source_rgb(*c)
+        self.boxes.text(str(i), color=c, fontsize=5)
+        self.boxes.circle(0, 0, r=1)
+
+    def render(
+        self,
+        move=None,
+        callback=None,
+        turtle: bool = True,
+        correct_corners: bool = True,
+    ):
         # print(f"Rendering WallBuilder {self.label}:")
+        callback = self._wall_debug_callback if self.debug else None
 
-        # xxx: hack to allow starting with non-horizontal wall
-        self.boxes.moveTo(0, 0, self.initial_angle)
-
-        if self.boxes.debug:
-            assert callback is None, "TODO: combine callbacks"
-            callback = self.boxes.show_cc
-
-        for item in self.items:
-            if not item.text:
+        position, angle = np.array([0, 0], dtype=float), 0
+        for c in self.commands:
+            if isinstance(c, Close):
+                continue  # ...
+            if isinstance(c, Turn):
+                angle = (angle + c.angle) % 360
                 continue
+            if not isinstance(c, Edge):
+                raise ValueError(f"Unsupported {c = }")
+
+            delta = c.length * _direction_vector(angle)
+            middle = position + (delta / 2)
+            position += delta
+
             # draw text in middle of item
-            x, y = item.center.astype(float)
-            if self.boxes.debug:
-                with self.boxes.saved_context():
-                    self.boxes.moveTo(x, y)
-                    angle = item.angle
-                    # make the angle always upright
-                    if 90 < angle < 270:
-                        angle -= 180
-                    text = item.text + f"={fmt(item.length)}"
-                    self.boxes.text(
-                        text, fontsize=3, align="center bottom", angle=angle
-                    )
+            x, y = middle.astype(float)
+            if self.debug:
+                # make the angle always upright
+                a = angle
+                if 90 < a < 270:
+                    a -= 180
+                self.boxes.text(
+                    f"{(c.text or '')} {fmt_mm(c.length)}",
+                    x=x,
+                    y=y,
+                    angle=a,
+                    fontsize=3,
+                    align="center bottom",
+                )
 
-        # print(indent(self.rendering_table(), "    "))
-
+        borders, edges = self.borders_edges()
         self.boxes.polygonWall(
-            self.get_borders(),
-            edge=self.get_edges(),
+            borders,
+            edge=edges,
             correct_corners=correct_corners,
             callback=callback,
             move=move,
@@ -774,7 +867,6 @@ class Element:
         for c in self.render:
             with self.boxes.saved_context():
                 self.boxes.moveTo(x, y)
-                # self.boxes.moveTo(-self.bbox.minx, -self.bbox.miny)
                 c()
 
     @classmethod
@@ -814,23 +906,22 @@ import sys
 import pytest
 from hamcrest import assert_that, equal_to
 
-
-@pytest.mark.parametrize(
-    "input,start,end,expected",
-    [
-        ("abc", True, True, "_a_b_c_"),
-        ("a", True, True, "_a_"),
-        ("", True, True, ""),
-        ("abc", False, False, "a_b_c"),
-        ("a", False, False, "a"),
-        ("", False, False, ""),
-    ],
-)
-def test_intersperse_repeat_sep(input, start, end, expected):
-    assert_that(
-        "".join(intersperse(itertools.repeat("_"), input, start=start, end=end)),
-        equal_to(expected),
-    )
+# @pytest.mark.parametrize(
+#    "input,start,end,expected",
+#    [
+#        ("abc", True, True, "_a_b_c_"),
+#        ("a", True, True, "_a_"),
+#        ("", True, True, ""),
+#        ("abc", False, False, "a_b_c"),
+#        ("a", False, False, "a"),
+#        ("", False, False, ""),
+#    ],
+# )
+# def test_intersperse_repeat_sep(input, start, end, expected):
+#    assert_that(
+#        "".join(intersperse(itertools.repeat("_"), input, start=start, end=end)),
+#        equal_to(expected),
+#    )
 
 
 class TestBox:

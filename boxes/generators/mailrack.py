@@ -31,26 +31,21 @@ from math import cos, radians, sin, sqrt, tan
 
 from hamcrest import assert_that, close_to
 
-from boxes import argparseSections, boolarg, holeCol, restore
-from boxes.edges import (
-    FingerJointEdge,
-    FingerJointEdgeCounterPart,
-    FingerJointSettings,
-    MountingSettings,
-)
+from boxes import holeCol
+from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, MountingSettings
 from boxes.generators.raibase import (
-    ALPHA_SIGN,
     PLAIN,
-    DEG_SIGN,
-    Compound,
+    Edge,
     Element,
+    Plain,
     RaiBase,
-    Section,
     SkippingFingerJoint,
+    Turn,
     coord,
-    fmt,
+    fmt_deg,
     fmt_mm,
     inject_shortcuts,
+    intersperse,
 )
 
 FINGER = "f"
@@ -71,8 +66,9 @@ MIDDLE_FINGERHOLES = "fingerholes"
 def mark(s):
     return DOWN_ARROW + s + DOWN_ARROW
 
+
 def make_sections(xs, name, edge):
-    return [Section(x, edge, text=f"{name}{i}") for i, x in enumerate(xs)]
+    return [Edge(length=x, edge_type=edge, text=f"{name}{i}") for i, x in enumerate(xs)]
 
 
 # class MailRack(RaiBase):
@@ -146,6 +142,7 @@ class MailRack(RaiBase):
             type=str,
             default="",
         )
+        # self.cutout_width = "equal"
 
     @property
     def shortcuts(self):
@@ -185,13 +182,16 @@ class MailRack(RaiBase):
             angle_rad=alpha_rad,
             hat_height=hat_height,
             sheff=sheff,
-            gap=Section(f, PLAIN, text="f"),
+            gap=Edge(f, PLAIN, text="f"),
             zigzags=zigzags,
             middle_style=self.middle_style,
             top_style=self.top_style,
         )
 
     def setup(self):
+        # logging.getLogger("SkippingFingerJoint").setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
+
         assert self.top_style in ("continuous", "symmetric")
         if self.top_style == "symmetric":
             assert len(set(self.sh)) == 1
@@ -225,7 +225,7 @@ class MailRack(RaiBase):
         me = self.edgesettings["Mounting"]
 
         self.reference = 0
-        self.thickness = 3.175 # 1/8 inch
+        self.thickness = 3.175  # 1/8 inch
         self.top_style = "symmetric"
         self.middle_style = MIDDLE_POCKETS_IN_FINGERS_OUT
         if self.preset == "15leroy":
@@ -238,13 +238,40 @@ class MailRack(RaiBase):
             self.plate_slot_width = 20
             self.plate_slot_distance = 60
             self.plate_slot_depth = self.thickness
-            self.d_from_bottom = 20 
-            self.cutout_height = 15 
+            self.d_from_bottom = 20
+            self.cutout_height = 15
             self.cutout_width = 70
 
-            me["d_shaft"] = 3.6 # 3.45 plus margin
-            me["d_head"] = 6.5 # 5.48 plus margin
-            me["num"] = 2 #len(self.sx)
+            me["d_shaft"] = 3.6  # 3.45 plus margin
+            me["d_head"] = 6.5  # 5.48 plus margin
+            me["num"] = 2  # len(self.sx)
+        elif self.preset == "skadis-assortments":
+            # assortment box sizes:
+            #  * 200mm x 140mm x 25mm
+            #  * 185mm x 135mm x 45mm
+            self.sh = [80] * 2
+            ##self.sx = [200] * 2
+            self.sx = [200] * 2
+            self.alpha_deg = 70
+            self.side_angled_length = 40
+            self.floor_depth = 30
+
+            # TODO: for precise angled fit of rectangular objects,
+            # we should have:
+            #   * bottom level should not have a horizontal floor (i.e. should be all slanted)
+            #   * all levels above should have a calculated tilted size, something like ...
+            #     some trig relationship between floor and angle and the rest...
+
+            self.plate_slot_width = 20
+            self.plate_slot_distance = 60
+            self.plate_slot_depth = self.thickness
+            self.d_from_bottom = 20
+            self.cutout_height = 15
+            self.cutout_width = 70
+
+            me["d_shaft"] = 3.6  # 3.45 plus margin
+            me["d_head"] = 6.5  # 5.48 plus margin
+            me["num"] = 2  # len(self.sx)
         elif self.preset == "test-noplate":
             self.d_from_bottom = 50
             self.cutout_height = 5
@@ -261,14 +288,13 @@ class MailRack(RaiBase):
         else:
             raise ValueError()
 
-
     @inject_shortcuts
     def render(self, sheff):
         self.setup()
-        if self.cutout_width == "equal":
-            # TODO: check stuff etc.
-            space_plus_drawer = (self.sx[0] + self.f) / self.n_cutouts
-            self.cutout_width = space_plus_drawer / 2
+        # if self.cutout_width == "equal":
+        #    # TODO: check stuff etc.
+        #    space_plus_drawer = (self.sx[0] + self.f) / self.n_cutouts
+        #    self.cutout_width = space_plus_drawer / 2
 
         print(f"Cutout: {self.cutout_width} x {fmt_mm(self.cutout_height)}")
 
@@ -290,22 +316,36 @@ class MailRack(RaiBase):
         back = back.translate(coord(0, -back.height))
         elems.append(back)
 
+        elems.append(self.midfloors_level(0))
+        elems.append(self.midfloors())
         stack = self.ystack(
             self.midfloors(),
-            *(self.front(yi) for yi in range(len(sheff))),
-            self.bottom_floor(),
+            ##    *(self.front(yi) for yi in range(len(sheff))),
+            ##    self.bottom_floor(),
         )
-        stack = stack.translate(coord(0, -stack.height - self.spacing - back.height))
+        stack = stack.translate(
+            coord(0, -stack.height - self.spacing - 0)
+        )  # back.height))
         elems.append(stack)
 
         # divide sides to left/right
-        all_sides = [self.side(is_inner=False) for _ in range(2)] + [self.side(is_inner=True) for _ in range(len(self.sx) - 1)]
+        all_sides = [self.side(is_inner=False) for _ in range(2)] + [
+            self.side(is_inner=True) for _ in range(len(self.sx) - 1)
+        ]
+        all_sides = all_sides[:2]
         print(f"depth: {fmt_mm(all_sides[0].width)}")
         split = len(all_sides) // 2
-        sides = Element.union(self, [
-            self.ystack(all_sides[split:]).mirror().translate(coord(-3 * self.spacing, 0)),
-            self.ystack(all_sides[:split]).translate(coord(back.width + 3 * self.spacing, 0)),
-        ])
+        sides = Element.union(
+            self,
+            [
+                self.ystack(all_sides[split:])
+                .mirror()
+                .translate(coord(-3 * self.spacing, 0)),
+                self.ystack(all_sides[:split]).translate(
+                    coord(back.width + 3 * self.spacing, 0)
+                ),
+            ],
+        )
         elems.append(sides.translate(coord(0, -sides.height)))
 
         full = Element.union(self, elems)
@@ -332,65 +372,66 @@ class MailRack(RaiBase):
     ) -> Element:
         w = self.wall_builder("side")
 
-        w.add(d, alpha_deg, FINGER, text=mark("floor=d"))
+        w.add(Edge(d, FINGER, text=mark("floor=d")), Turn(alpha_deg))
 
         #### bottom cover options
         if False:
             # Plain
-            section = Section(a, FINGER_COUNTER, text=mark("front=a"))
+            w.add(Edge(a, FINGER_COUNTER, text=mark("front=a")))
         else:
             # Same as covers on other levels
             _zig, zag = zigzags[0]
-            section = Compound(
-                [
-                    Section(a - zag, PLAIN, text=mark("front counterzag")),
-                    Section(zag, FINGER, text=mark("front zag")),
-                ]
+            w.add(
+                Plain(a - zag, text=mark("front counterzag")),
+                Edge(zag, FINGER, text=mark("front zag")),
             )
-        assert_that(section.length, close_to(a, delta=1e-3))
-
-        w.add(section, 90)
+        w.add(Turn(90))
 
         # Used to draw edges of finger hole area
         zigzag_corners = []
 
         # orthogonal, zig-zaggy side
-        for zig, zag in zigzags:
-            w.add(zig, -90, PLAIN, text=mark("zig"))
+        for i, (zig, zag) in enumerate(zigzags):
+            w.add(Plain(zig, text=mark(f"zig{i}")), Turn(-90))
             zigzag_corners.append(w.position)
-            w.add(zag, 90, FINGER, text=mark("zag"))
+            w.add(Edge(zag, FINGER, text=mark(f"zag{i}")), Turn(90))
 
         if top_style == "continuous":
             # now go all the way from current x to x=0
-            w.add(self.hat_length, 180 - alpha_deg, PLAIN, text=mark("topside"))
+            w.add(Plain(self.hat_length, text=mark("topside")), Turn(180 - alpha_deg))
         if top_style == "symmetric":
             # all zigs & zags are the same because this only works with equally-sized
             # shelves
-            w.add(zig, 90 - alpha_deg, PLAIN, text=mark("topside"))
+            assert len(set(zigzags)) == 1
+            zig, _zag = zigzags[0]
             w.add(
-                d + a * cos_a - zig * sin_a, 90, PLAIN, text=mark("topside horizontal")
+                Plain(zig, text=mark("topside")),
+                Turn(90 - alpha_deg),
+                Plain(d + a * cos_a - zig * sin_a, text=mark("topside horizontal")),
+                Turn(90),
             )
 
         # now all the way down.
         s = list(reversed(sheff))
-        have_slot = (
-            middle_style == MIDDLE_POCKETS or
-            (middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT and is_inner)
+        have_slot = middle_style == MIDDLE_POCKETS or (
+            middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT and is_inner
         )
         if have_slot:
-            w.add(s[0], 90, FINGER)
+            w.edge(s[0], FINGER).turn(90)
             for h in s[1:]:
                 w.slot(depth=d, length=f)
-                w.add(h, 90, FINGER)
+                w.edge(h, FINGER).turn(90)
         else:
             w.add(
-                Compound.intersperse(
-                    gap,
-                    make_sections(s, "sheff", FINGER),
-                    start=False,
-                    end=False,
+                list(
+                    intersperse(
+                        gap,
+                        make_sections(s, "sheff", FINGER),
+                        start=False,
+                        end=False,
+                    )
                 ),
-                90,
+                Turn(90),
             )
 
         def internals():
@@ -405,7 +446,6 @@ class MailRack(RaiBase):
                             self.edge(a - zag)
                             self.corner(-alpha_deg)
                             self.edge(d)
-                            self.ctx.stroke()
                         # lower stroke
                         with self.saved_context():
                             self.moveTo(zigzag_corner, 270 + alpha_deg)
@@ -416,11 +456,9 @@ class MailRack(RaiBase):
                             self.edge((a - zag) + delta)
                             self.corner(-alpha_deg)
                             self.edge(d + delta)
-                            self.ctx.stroke()
 
-            if (
-                middle_style == MIDDLE_FINGERHOLES or
-                (middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT and not is_inner)
+            if middle_style == MIDDLE_FINGERHOLES or (
+                middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT and not is_inner
             ):
                 with self.saved_context():
                     self.moveTo(0, -f / 2)
@@ -428,86 +466,91 @@ class MailRack(RaiBase):
                         self.moveTo(0, h + f)
                         self.fingerHolesAt(0, 0, d, 0)
 
-        return Element.from_item(w).add_render(internals).close_part()
+        return (
+            Element.from_item(w)
+            .add_render(internals)
+            .is_part("side")
+            .close_part("side")
+        )
 
     @inject_shortcuts
     def front(self, yi, gap, sx, a, zigzags, f) -> Element:
         # expected width of front section
-        expected_width = (f*(len(sx)+1) + sum(sx))
+        expected_width = f * (len(sx) + 1) + sum(sx)
 
-        # xxx: reuse zig on level 0
-        if yi == 0:
-            _zig, zag = zigzags[0]
-        else:
-            _zig, zag = zigzags[yi - 1]
-
-        w = self.wall_builder(f"front{yi}")
-
+        name = f"front{yi}"
+        w = self.wall_builder(name)
 
         ###### front edge ######
         pos_start = w.position
         print(f"{pos_start=}")
 
         if self.plate_slot_width:
-            swidth, sdist, sdepth = self.plate_slot_width, self.plate_slot_distance, self.plate_slot_depth
+            swidth, sdist, sdepth = (
+                self.plate_slot_width,
+                self.plate_slot_distance,
+                self.plate_slot_depth,
+            )
             for x in sx:
-                w.add(gap, 0)
-                leftover = x - 2 * swidth - sdist
-                w.add(leftover / 2, 90, PLAIN)
+                leftover_half = Plain((x - 2 * swidth - sdist) / 2)
+                w.add(gap, leftover_half, Turn(90))
                 w.slot(sdepth, swidth)
-                w.add(sdist, 90, PLAIN)
+                w.add(Plain(sdist), Turn(90))
                 w.slot(sdepth, swidth)
-                w.add(leftover / 2, 0, PLAIN)
-            w.add(gap, 90)
+                w.add(leftover_half)
+            w.add(gap, Turn(90))
 
         else:
-            mouth_edges = Compound.intersperse(
-                gap, make_sections(sx, "mouth", PLAIN), start=True, end=True
+            # mouth_edges
+            w.add(
+                intersperse(
+                    gap,
+                    make_sections(sx, "mouth", PLAIN),
+                    start=True,
+                    end=True,
+                ),
+                Turn(90),
             )
-            w.add(mouth_edges, 90)
 
         pos_end = w.position
         ###### end front edge ######
         print(f"=> {pos_end=}")
-        assert_that(float((pos_end - pos_start)[0]), close_to(
-            f*(len(sx)+1) + sum(sx), 0.01
-        ))
+        assert_that(
+            float((pos_end - pos_start)[0]), close_to(f * (len(sx) + 1) + sum(sx), 0.01)
+        )
 
         # TODO: dedupe w/ rev side
+        # xxx: reuse zig on level 0
         if yi == 0:
-            w.add(zag, 0, FINGER_COUNTER, text=mark("front zag"))
+            _zig, zag = zigzags[0]
         else:
-            w.add(zag, 90, FINGER_COUNTER, text=mark("front zag"))
-            w.add(f, -90, PLAIN)
+            _zig, zag = zigzags[yi - 1]
+        front_zag = Edge(zag, FINGER_COUNTER, text=mark("front zag"))
 
-        w.add(a - zag, 90, PLAIN, text=mark("front counterzag"))
+        # (cutout) counterzag turn90 (gap)
+        # (gap) turn90 counterzag (cutout)
 
+        chain = [front_zag]
+        if yi != 0:
+            chain.append([Turn(90), Plain(f), Turn(-90)])
+        chain.extend([Plain(a - zag, text=mark("front counterzag")), Turn(90)])
         if yi == 0:
-            w.add(gap, 0)
+            chain.append(gap)
+
+        w.add(chain)
 
         for x in sx[:-1]:
             # Slot only on drawers above level 1
+            w.add(Edge(x, ANGLED_POS))
             if yi != 0:
-                w.add(x, 90, ANGLED_NEG)
-                w.slot(depth=(a-zag), length=f)
+                w.add(Turn(90))
+                w.slot(depth=(a - zag), length=f)
             else:
-                w.add(x, 0, ANGLED_NEG)
-                w.add(gap, 0)
+                w.add(gap)
 
-        if yi == 0:
-            w.add(sx[-1], 0, ANGLED_NEG)
-            w.add(gap, 90)
-        else:
-            w.add(sx[-1], 90, ANGLED_NEG)
-
-
-        if yi == 0:
-            w.add(a - zag, 0, PLAIN, text=mark("front counterzag"))
-            w.add(zag, 0, FINGER_COUNTER, text=mark("front zag"))
-        else:
-            w.add(a - zag, -90, PLAIN, text=mark("front counterzag"))
-            w.add(f, 90, PLAIN)
-            w.add(zag, 90, FINGER_COUNTER, text=mark("front zag"))
+        w.add(Edge(sx[-1], ANGLED_NEG), list(reversed(chain)))
+        if yi != 0:
+            w.add(Turn(90))
 
         def internals():
             # Vertical finger holes for bottom floor
@@ -523,21 +566,17 @@ class MailRack(RaiBase):
                 # self.moveTo(f / 2, 0)
                 assert len(set(sx)) == 1, "cutouts only ok if all equal"
 
-                space_plus_drawer = (sx[0] + f) / self.n_cutouts
-
-                space = space_plus_drawer - self.cutout_width
-                self.moveTo( space / 2 + f / 2, 0)
-                # if rendered now, the cutout's top edge would be aligned with drawer's top edge.
-
-                self.moveTo(0, -self.cutout_height + zag - self.d_from_bottom)
-                
+                space = (sx[0] + f) / self.n_cutouts - self.cutout_width
+                self.moveTo(
+                    (space + f) / 2, -self.cutout_height + zag - self.d_from_bottom
+                )
 
                 for _ in range(len(sx) * self.n_cutouts):
                     self.front_cutout(self.cutout_width, self.cutout_height)
                     self.moveTo(self.cutout_width, 0)
                     self.moveTo(space, 0)
 
-        return Element.from_item(w).add_render(internals).close_part()
+        return Element.from_item(w).add_render(internals).is_part(name).close_part(name)
 
     @holeCol
     def front_cutout(self, cutout_width, cutout_height):
@@ -550,17 +589,20 @@ class MailRack(RaiBase):
 
     @inject_shortcuts
     def bottom_floor(self, sx, gap, d, f) -> Element:
+        name = "bottom floor"
         w = self.wall_builder("bottom floor")
-        xedges = Compound.intersperse(
-            gap, make_sections(sx, "sx to front", ANGLED_POS), start=True, end=True
-        )
-        w.add(xedges, 90)
-        w.add(d, 90, FINGER_COUNTER)
-        xedges2 = Compound.intersperse(
-            gap, make_sections(sx, "sx", FINGER), start=True, end=True
-        )
-        w.add(xedges2, 90)
-        w.add(d, 90, FINGER_COUNTER)
+        for side_text, side_edge in (("front", ANGLED_POS), ("back", FINGER)):
+            w.add(
+                intersperse(
+                    gap,
+                    make_sections(sx, f"sx to {side_text}", side_edge),
+                    start=True,
+                    end=True,
+                ),
+                Turn(90),
+                Edge(d, FINGER_COUNTER),
+                Turn(90),
+            )
 
         def internals():
             # Vertical finger holes for bottom floor
@@ -569,47 +611,57 @@ class MailRack(RaiBase):
                 self.moveTo(x + f, 0)
                 self.fingerHolesAt(0, 0, d, 90)
 
-        return Element.from_item(w).add_render(internals).close_part()
+        return Element.from_item(w).add_render(internals).is_part(name).close_part(name)
 
     @inject_shortcuts
     def midfloor_fullwidth(self, sx, d, gap) -> Element:
         # TODO: very similar to bottom floor
-        w = self.wall_builder(f"midfloor({self.middle_style})")
+        name = f"midfloor({self.middle_style})"
 
-        def _half(edge_type, name):
-            middle = Compound.intersperse(
-                gap, make_sections(sx, name, edge_type), start=False, end=False
-            )
-
+        def _half(edge_type, section_name):
             if self.middle_style == MIDDLE_POCKETS:
-                w.add(gap, 0)
-                w.add(middle, 0)
-                w.add(gap, 90)
-                w.add(d, 90, PLAIN)
-            elif self.middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT:
-                w.add(middle, 90)
-                w.add(d, 90, FINGER) # PLAIN)
+                style, start, end = PLAIN, True, True
+            if self.middle_style == MIDDLE_POCKETS_IN_FINGERS_OUT:
+                style, start, end = FINGER, False, False
+            else:
+                raise
+            return [
+                *intersperse(
+                    gap,
+                    make_sections(sx, section_name, edge_type),
+                    start=start,
+                    end=end,
+                ),
+                Turn(90),
+                Edge(d, style),
+                Turn(90),
+            ]
 
-        _half(ANGLED_POS, "sx to front")
-        _half(FINGER, "sx to back")
-        return Element.from_item(w).close_part()
+        w = self.wall_builder(name).add(
+            _half(ANGLED_POS, "sx to front"), _half(FINGER, "sx to back")
+        )
+        return Element.from_item(w).is_part(name).close_part(name)
 
     @inject_shortcuts
     def midfloor_fingerholes(self, x_idx, sx, d, alpha_deg) -> Element:
         x = sx[x_idx]
-        w = self.wall_builder(f"midfloor(fingerholes) {x_idx}")
-        w.add(x, 90, ANGLED_POS, text=mark(f"front {alpha_deg}{DEG_SIGN}"))
-        w.add(d, 90, (SKIP_EVEN if x_idx < len(sx) - 1 else FINGER))
-        w.add(x, 90, FINGER)
-        w.add(d, 90, (SKIP_ODD_REVERSE if x_idx > 0 else FINGER))
-        return Element.from_item(w).close_part()
+        name = f"midfloor(fingerholes) {x_idx}"
+        w = self.wall_builder(name).add(
+            Edge(x, ANGLED_POS, text=mark(f"front {fmt_deg(alpha_deg)}")),
+            Turn(90),
+            Edge(d, (SKIP_EVEN if x_idx < len(sx) - 1 else FINGER)),
+            Turn(90),
+            Edge(x, FINGER),
+            Turn(90),
+            Edge(d, (SKIP_ODD_REVERSE if x_idx > 0 else FINGER)),
+            Turn(90),
+        )
+        return Element.from_item(w).is_part(name).close_part(name)
 
     @inject_shortcuts
     def midfloors_level(self, yi):
         if self.middle_style == MIDDLE_FINGERHOLES:
-            return self.xstack(
-                self.midfloor_fingerholes(i) for i in range(len(sx))
-            )
+            return self.xstack(self.midfloor_fingerholes(i) for i in range(len(sx)))
         elif self.middle_style in (MIDDLE_POCKETS, MIDDLE_POCKETS_IN_FINGERS_OUT):
             return self.midfloor_fullwidth()
         else:
@@ -625,21 +677,26 @@ class MailRack(RaiBase):
 
     @inject_shortcuts
     def back(self, f, sx, sheff, gap) -> Element:
-        xedges = Compound.intersperse(
-            gap, make_sections(sx, "sx", FINGER_COUNTER), start=True, end=True
+        xedges = list(
+            intersperse(
+                gap, make_sections(sx, "sx", FINGER_COUNTER), start=True, end=True
+            )
         )
-        yedges = Compound.intersperse(
-            gap,
-            make_sections(sheff, "sheff", FINGER_COUNTER),
-            start=True,
-            end=False,
+        yedges = list(
+            intersperse(
+                gap,
+                make_sections(sheff, "sheff", FINGER_COUNTER),
+                start=True,
+                end=False,
+            )
         )
+        name = "back"
         w = (
             self.wall_builder("back")
-            .add(xedges, 90)
-            .add(yedges, 90)
-            .add(xedges.length, 90, "G")  # <- mounting edge
-            .add(reversed(yedges), 90)
+            .add(xedges, Turn(90))
+            .add(yedges, Turn(90))
+            .add(Edge(sum(x.length for x in xedges), "G"), Turn(90))  # <- mounting edge
+            .add(list(reversed(yedges)), Turn(90))
         )
 
         def internals():
@@ -655,4 +712,4 @@ class MailRack(RaiBase):
                         self.moveTo(dx + f, 0)
                 self.moveTo(0, dy + f)
 
-        return Element.from_item(w).add_render(internals).close_part()
+        return Element.from_item(w).add_render(internals).is_part(name).close_part(name)

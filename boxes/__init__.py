@@ -316,6 +316,8 @@ class Boxes:
     ui_group = "Misc"
     UI = ""
 
+    ctx: formats.Context | None = None
+
     description: str = ""  # Markdown syntax is supported
 
     def __init__(self) -> None:
@@ -1144,7 +1146,7 @@ class Boxes:
 
     ### Navigation
 
-    def moveTo(self, x, y=0.0, degrees=0):
+    def moveTo(self, x, y=0.0, degrees: float = 0):
         """
         Move coordinate system to given point
 
@@ -1466,7 +1468,7 @@ class Boxes:
         self.edge(2 * rs, tabs)
 
     @restore
-    def text(self, text, x=0, y=0, angle=0, align="", fontsize=10, color=[0.0, 0.0, 0.0], font="Arial"):
+    def text(self, text, x: float =0, y: float=0, angle:float=0, align="", fontsize=10, color=[0.0, 0.0, 0.0], font="Arial"):
         """
         Draw text
 
@@ -2840,8 +2842,21 @@ class Boxes:
         except TypeError:
             edges = [self.edges.get(edge, edge)]
 
+        from boxes.generators.raibase import fmt, fmt_mm
+
         print(f"polygonWall started, {len(borders) = }")
-        print(f"{borders = }")
+        parts = []
+        for i in range(0, len(borders), 2):
+            if borders[i] is None:
+                parts.append("[close]")
+                continue
+            e = edge[i // 2]
+            parts.append(f"{e}:{fmt_mm(borders[i])}")
+            if borders[i + 1] != 0:
+                parts.append(f"{fmt(borders[i + 1], show_sign=True)}°")
+        print(" → ".join(parts))
+
+        #print(f"{borders = }")
 
         t = self.thickness # XXX edge.margin()
 

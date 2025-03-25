@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import codecs
 import io
+import logging
 import math
+import traceback
+from functools import lru_cache
 from typing import Any
 from xml.etree import ElementTree as ET
 
+import numpy as np
 from affine import Affine
 
 from boxes.extents import Extents
@@ -126,15 +130,36 @@ class Part:
         return sum([p.extents() for p in self.pathes])
 
     def transform(self, f, m, invert_y=False):
-        assert(not self.path)
+        if self.path:
+            self.logger.error(f"Transform called but path not finished: {self.path}")
+            raise Exception()
         for p in self.pathes:
             p.transform(f, m, invert_y)
 
     def append(self, *path):
+        from boxes.generators.raibase import fmt
+        parts = []
+        for x in path:
+            if isinstance(x, str):
+                parts.append(x)
+            elif isinstance(x, np.float64):
+                parts.append(fmt(x))
+            else:
+                parts.append(repr(x))
+        print(f"Part:{id(self)} append {' '.join(parts)}")
+
+        
+        #traceback.print_stack(file=sys.stdout)
         self.path.append(list(path))
+
+    @property
+    @lru_cache()
+    def logger(self):
+        return logging.getLogger(f"Part:{self.name}:{id(self)}")
 
     def stroke(self, **params):
         if len(self.path) == 0:
+            self.logger.info("stroke(): noop, empty path")
             return
         # search for path ending at new start coordinates to append this path to
         xy0 = self.path[0][1:3]
@@ -144,11 +169,12 @@ class Part:
                 xy1 = p.path[-1][1:3]
                 if points_equal(*xy0, *xy1) and p.params == params:
                     p.path.extend(self.path[1:])
-                    self.path = []
+                    self.logger.info("stroke(): flush path 1")
                     return p
         p = Path(self.path, params)
         self.pathes.append(p)
         self.path = []
+        print("stroke(): flush path 2")
         return p
 
     def move_to(self, *xy):

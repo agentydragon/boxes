@@ -445,7 +445,7 @@ class MountingEdge(BaseEdge):
         return 0.0
 
     def __call__(self, length, **kw):
-        print('---begin MountingEdge---')
+        #print('---begin MountingEdge---')
         if length == 0.0:
             return
 
@@ -518,7 +518,7 @@ class MountingEdge(BaseEdge):
                 x += width / 2
                 x += gap
             self.edge(length)
-        print('---end MountingEdge---')
+        #print('---end MountingEdge---')
 
 
 #############################################################################

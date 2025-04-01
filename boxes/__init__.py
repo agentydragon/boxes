@@ -2870,19 +2870,19 @@ class Boxes:
         except TypeError:
             edges = [self.edges.get(edge, edge)]
 
-        from boxes.generators.raibase import fmt, fmt_mm
+        from boxes.generators.raibase import fmt, fmt_deg, fmt_mm
 
         print(f"polygonWall started, {len(borders) = }")
-        parts = []
+        str_parts = []
         for i in range(0, len(borders), 2):
             if borders[i] is None:
-                parts.append("[close]")
+                str_parts.append("[close]")
                 continue
-            e = edge[i // 2]
-            parts.append(f"{e}:{fmt_mm(borders[i])}")
+            e = edge[(i // 2)%len(edge)]
+            str_parts.append(f"{e}:{fmt_mm(borders[i])}")
             if borders[i + 1] != 0:
-                parts.append(f"{fmt(borders[i + 1], show_sign=True)}°")
-        print(" → ".join(parts))
+                str_parts.append(f"{fmt(borders[i + 1], show_sign=True)}°")
+        print(" → ".join(str_parts))
 
         #print(f"{borders = }")
 
@@ -2918,12 +2918,12 @@ class Boxes:
             edge = edges[(i//2)%len(edges)]
             edge(l)
             self.edge(length_correction)
-            parts = f"l={fmt_mm(l)}"
+            str_parts = [f"l={fmt_mm(l)}"]
             if length_correction:
-                parts.append(f"l_corr={fmt_mm(length_correction)}")
+                str_parts.append(f"l_corr={fmt_mm(length_correction)}")
             if next_angle:
-                parts.append(fmt_deg(next_angle))
-            logger.info(" ".join(parts))
+                str_parts.append(fmt_deg(next_angle))
+            logger.info(" ".join(str_parts))
             self.corner(next_angle, tabs=1)
 
         print("polygonWall finished")

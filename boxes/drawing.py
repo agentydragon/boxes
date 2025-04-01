@@ -135,9 +135,9 @@ class Part:
         return sum([p.extents() for p in self.pathes])
 
     def transform(self, f, m, invert_y=False):
-        if self.path:
-            self.logger.error(f"Transform called but path not finished: {self.path}")
-            raise Exception()
+        # if self.path:
+        #     self.logger.error(f"Transform called but path not finished: {self.path}")
+        #     raise Exception("Part.transform called but there's an active uncommitted path")
         for p in self.pathes:
             p.transform(f, m, invert_y)
 
@@ -171,6 +171,7 @@ class Part:
                 if points_equal(*xy0, *xy1) and p.params == params:
                     p.path.extend(self.path[1:])
                     self.logger.info("stroke(): flush path 1")
+                    self.path = []
                     return p
         p = Path(self.path, params)
         self.pathes.append(p)

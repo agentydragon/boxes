@@ -23,6 +23,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from boxes import gears
+from boxes.fmt import fmt_mm
 
 
 def argparseSections(s: str) -> list[float]:
@@ -983,7 +984,6 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
         play = self.settings.play
 
         fingers, leftover = self.calcFingers(length, bedBolts)
-        from boxes.generators.raibase import fmt_mm
         if kw:
             kw_part = f", {kw=}"
         else: 

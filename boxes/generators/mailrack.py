@@ -38,6 +38,7 @@ from hamcrest import assert_that, close_to
 
 from boxes import holeCol
 from boxes.edges import FingerJointEdge, FingerJointEdgeCounterPart, MountingSettings
+from boxes.fmt import fmt_deg, fmt_mm
 from boxes.generators.raibase import (
     PLAIN,
     Edge,
@@ -48,8 +49,6 @@ from boxes.generators.raibase import (
     Turn,
     WallCommand,
     coord,
-    fmt_deg,
-    fmt_mm,
     inject_shortcuts,
     intersperse,
     slot,

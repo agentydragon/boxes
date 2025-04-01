@@ -38,6 +38,7 @@ from shapely.ops import split
 
 from boxes import edges, formats, gears, parts, pulley
 from boxes.Color import *
+from boxes.fmt import fmt, fmt_deg, fmt_mm
 from boxes.qrcode_factory import BoxesQrCodeFactory
 from boxes.vectors import kerf
 
@@ -814,8 +815,6 @@ class Boxes:
         :param degrees: angle
         :param radius:  (Default value = 0)
         """
-        from boxes.generators.raibase import fmt_deg
-
         #print(f"corner({fmt_deg(degrees)})")
 
         try:
@@ -2869,8 +2868,6 @@ class Boxes:
             edges = [self.edges.get(e, e) for e in edge]
         except TypeError:
             edges = [self.edges.get(edge, edge)]
-
-        from boxes.generators.raibase import fmt, fmt_deg, fmt_mm
 
         print(f"polygonWall started, {len(borders) = }")
         str_parts = []

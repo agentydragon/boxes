@@ -14,6 +14,7 @@ import numpy as np
 from affine import Affine
 
 from boxes.extents import Extents
+from boxes.fmt import fmt
 
 EPS = 1e-4
 PADDING = 10
@@ -142,7 +143,6 @@ class Part:
             p.transform(f, m, invert_y)
 
     def append(self, *path):
-        from boxes.generators.raibase import fmt
         match path:
             case ('L', float(a), float(b)):
                 self.logger.info(f"append L {fmt(a)} {fmt(b)}")

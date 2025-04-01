@@ -10,7 +10,6 @@ import logging
 import math
 import random
 import sys
-from decimal import ROUND_HALF_UP, Decimal
 from math import cos, radians, sin
 from typing import Iterable
 
@@ -21,6 +20,7 @@ from hamcrest import assert_that, contains_exactly, equal_to
 
 from boxes import Boxes, Color
 from boxes.edges import FingerJointEdge, FingerJointSettings
+from boxes.fmt import fmt, fmt_mm, fmt_reldeg
 
 PLAIN = "e"
 DEG_SIGN = "°"
@@ -43,30 +43,6 @@ def dict_only_keys(d, want):
     want, have = set(want), set(d.keys())
     assert want <= have, f"{want - have = }"
     return {k: d[k] for k in want}
-
-
-def fmt(x, show_sign=False):
-    d = Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    s = str(d).rstrip("0").rstrip(".")
-    if show_sign and x >= 0:
-        s = "+" + s
-    return s
-
-
-def fmt_mm(x):
-    if x == 0:
-        return "0"
-    return f"{fmt(x)}mm"
-
-
-def fmt_deg(x):
-    return f"{fmt(x)}°"
-
-
-def fmt_reldeg(x):
-    if x == 0:
-        return "0"
-    return f"{fmt(x, show_sign=True)}°"
 
 
 class SkippingFingerJoint(FingerJointEdge):

@@ -30,6 +30,8 @@ class TestSVG:
         "TrayLayoutFile",
         "TypeTray",
         "Edges",
+        # extended base
+        "RaiBase",
     )
     brokenGenerators = ()
     avoidGenerator = notTestGenerators + brokenGenerators

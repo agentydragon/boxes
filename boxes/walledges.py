@@ -23,32 +23,40 @@ class _WallMountedBox(Boxes):
         self.addSettingsArgs(FrenchCleatSettings)
         self.addSettingsArgs(SkadisSettings)
         self.argparser.add_argument(
-            "--walltype",  action="store", type=str, default="plain",
-            choices=["plain", "plain reinforced", "slatwall", "dinrail",
-                     "french cleat", "skadis"],
-            help="Type of wall system to attach to")
+            "--walltype",
+            action="store",
+            type=str,
+            default="plain",
+            choices=[
+                "plain",
+                "plain reinforced",
+                "slatwall",
+                "dinrail",
+                "french cleat",
+                "skadis",
+            ],
+            help="Type of wall system to attach to",
+        )
 
     def generateWallEdges(self):
         if self.walltype.startswith("plain"):
-            s = WallSettings(
-                self.thickness, True,
-                **self.edgesettings.get("Wall", {}))
+            s = WallSettings(self.thickness, True, **self.edgesettings.get("Wall", {}))
         elif self.walltype == "slatwall":
             s = SlatWallSettings(
-                self.thickness, True,
-                **self.edgesettings.get("SlatWall", {}))
+                self.thickness, True, **self.edgesettings.get("SlatWall", {})
+            )
         elif self.walltype == "dinrail":
             s = DinRailSettings(
-                self.thickness, True,
-                **self.edgesettings.get("DinRail", {}))
+                self.thickness, True, **self.edgesettings.get("DinRail", {})
+            )
         elif self.walltype == "french cleat":
             s = FrenchCleatSettings(
-                self.thickness, True,
-                **self.edgesettings.get("FrenchCleat", {}))
+                self.thickness, True, **self.edgesettings.get("FrenchCleat", {})
+            )
         elif self.walltype == "skadis":
             s = SkadisSettings(
-                self.thickness, True,
-                **self.edgesettings.get("Skadis", {}))
+                self.thickness, True, **self.edgesettings.get("Skadis", {})
+            )
 
         s.edgeObjects(self)
         self.wallHolesAt = self.edges["|"]
@@ -56,9 +64,11 @@ class _WallMountedBox(Boxes):
             self.edges["c"] = self.edges["d"]
             self.edges["C"] = self.edges["D"]
 
+
 #############################################################################
 ####     Straight Edge / Base class
 #############################################################################
+
 
 class WallEdge(BaseEdge):
 
@@ -86,6 +96,7 @@ class WallEdge(BaseEdge):
             else:
                 self._joint(l)
 
+
 class WallJoinedEdge(WallEdge):
     char = "b"
 
@@ -97,6 +108,7 @@ class WallJoinedEdge(WallEdge):
 
     def startwidth(self) -> float:
         return self.settings.thickness
+
 
 class WallBackEdge(WallEdge):
 
@@ -112,10 +124,11 @@ class WallBackEdge(WallEdge):
     def margin(self) -> float:
         return self.settings.thickness
 
+
 class WallHoles(WallEdge):
 
     def _section(self, nr, length):
-        self.rectangularHole(length/2, 0, length, self.settings.thickness)
+        self.rectangularHole(length / 2, 0, length, self.settings.thickness)
         self.moveTo(length, 0)
 
     def _joint(self, length):
@@ -136,16 +149,17 @@ class WallHoles(WallEdge):
             b = self.boxes.burn
             t = self.settings.thickness
 
-            if self.boxes.debug: # XXX
+            if self.boxes.debug:  # XXX
                 width = self.settings.thickness
-                self.ctx.rectangle(b, -width / 2 + b,
-                                   length - 2 * b, width - 2 * b)
+                self.ctx.rectangle(b, -width / 2 + b, length - 2 * b, width - 2 * b)
 
             self.boxes.moveTo(length, 0, 180)
             super().__call__(length)
 
+
 class WallHoleEdge(WallHoles):
     """Edge with holes for a parallel finger joint"""
+
     description = "Edge (parallel slot wall Holes)"
 
     def __init__(self, boxes, wallHoles, **kw) -> None:
@@ -156,8 +170,7 @@ class WallHoleEdge(WallHoles):
         dist = self.wallHoles.settings.edge_width + self.settings.thickness / 2
         with self.saved_context():
             px, angle = (0, 0) if self._reversed else (length, 180)
-            self.wallHoles(
-                px, dist, length, angle)
+            self.wallHoles(px, dist, length, angle)
         self.edge(length, tabs=2)
 
     def startwidth(self) -> float:
@@ -167,18 +180,18 @@ class WallHoleEdge(WallHoles):
     def margin(self) -> float:
         return 0.0
 
+
 class WallSettings(Settings):
     """Settings for plain WallEdges
-Values:
+    Values:
 
-* relative (in multiples of thickness)
+    * relative (in multiples of thickness)
 
- * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
+     * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
 
-"""
+    """
 
-    absolute_params: dict[str, Any] = {
-    }
+    absolute_params: dict[str, Any] = {}
 
     relative_params = {
         "edge_width": 1.0,
@@ -189,19 +202,27 @@ Values:
     def edgeObjects(self, boxes, chars="aAbBcCdD|", add=True):
         bc = self.base_class
         bn = bc.__name__
-        wallholes = type(bn+"Hole", (WallHoles, bc), {})(boxes, self)
+        wallholes = type(bn + "Hole", (WallHoles, bc), {})(boxes, self)
 
-        edges = [bc(boxes, self),
-                 type(bn+"Reversed", (bc,), {'_reversed' : True})(boxes, self),
-                 type(bn+"Joined", (WallJoinedEdge, bc), {})(boxes, self),
-                 type(bn+"JoinedReversed", (WallJoinedEdge, bc), {'_reversed' : True})(boxes, self),
-                 type(bn+"Back", (WallBackEdge, bc), {})(boxes, self),
-                 type(bn+"BackReversed", (WallBackEdge, bc), {'_reversed' : True})(boxes, self),
-                 type(bn+"Hole", (WallHoleEdge, bc), {})(boxes, wallholes),
-                 type(bn+"HoleReversed", (WallHoleEdge, bc), {'_reversed' : True})(boxes, wallholes),
-                 wallholes,
+        edges = [
+            bc(boxes, self),
+            type(bn + "Reversed", (bc,), {"_reversed": True})(boxes, self),
+            type(bn + "Joined", (WallJoinedEdge, bc), {})(boxes, self),
+            type(bn + "JoinedReversed", (WallJoinedEdge, bc), {"_reversed": True})(
+                boxes, self
+            ),
+            type(bn + "Back", (WallBackEdge, bc), {})(boxes, self),
+            type(bn + "BackReversed", (WallBackEdge, bc), {"_reversed": True})(
+                boxes, self
+            ),
+            type(bn + "Hole", (WallHoleEdge, bc), {})(boxes, wallholes),
+            type(bn + "HoleReversed", (WallHoleEdge, bc), {"_reversed": True})(
+                boxes, wallholes
+            ),
+            wallholes,
         ]
         return self._edgeObjects(edges, boxes, chars, add)
+
 
 #############################################################################
 ####     Slat wall
@@ -221,46 +242,100 @@ class SlatWallEdge(WallEdge):
         lengths = [0, h + he]
         length -= h + he
         if length > pitch:
-            lengths.extend([(length // pitch) * pitch - h - 2 - 2*he,
-                            h + 2 + 2*he,
-                            length % pitch])
+            lengths.extend(
+                [
+                    (length // pitch) * pitch - h - 2 - 2 * he,
+                    h + 2 + 2 * he,
+                    length % pitch,
+                ]
+            )
         else:
             lengths.append(length)
         return lengths
 
     def _section(self, nr, length):
-        w = self.settings.hook_height # vertical width of hook
+        w = self.settings.hook_height  # vertical width of hook
         hd = self.settings.hook_depth
         hdist = self.settings.hook_distance
         hh = self.settings.hook_overall_height
-        ro = w # outer radius
-        ri = min(w/2, hd/2) # inner radius
-        rt = min(1, hd/2) # top radius
-        slot = self.settings.hook_height + 2 # XXX
+        ro = w  # outer radius
+        ri = min(w / 2, hd / 2)  # inner radius
+        rt = min(1, hd / 2)  # top radius
+        slot = self.settings.hook_height + 2  # XXX
         if nr == 0:
-            poly = [0, -90, hdist-ri, (-90, ri), hh-ri-w-rt, (90, rt),
-                    hd-2*rt, (90, rt), hh-ro-rt, (90, ro), hdist+hd-ro, -90,
-                    length-6]
+            poly = [
+                0,
+                -90,
+                hdist - ri,
+                (-90, ri),
+                hh - ri - w - rt,
+                (90, rt),
+                hd - 2 * rt,
+                (90, rt),
+                hh - ro - rt,
+                (90, ro),
+                hdist + hd - ro,
+                -90,
+                length - 6,
+            ]
         elif nr == 1:
             if self.settings.bottom_hook == "spring":
-                r_plug = slot*.4
+                r_plug = slot * 0.4
                 slotslot = slot - r_plug * 2**0.5
-                poly = [self.settings.hook_extra_height, -90,
-                        5.0, -45, 0, (135, r_plug),
-                        0, 90, 10, -90, slotslot, -90, 10, 90, 0,
-                        (135, r_plug), 0, -45, 5, -90,
-                        self.settings.hook_extra_height]
+                poly = [
+                    self.settings.hook_extra_height,
+                    -90,
+                    5.0,
+                    -45,
+                    0,
+                    (135, r_plug),
+                    0,
+                    90,
+                    10,
+                    -90,
+                    slotslot,
+                    -90,
+                    10,
+                    90,
+                    0,
+                    (135, r_plug),
+                    0,
+                    -45,
+                    5,
+                    -90,
+                    self.settings.hook_extra_height,
+                ]
             elif self.settings.bottom_hook == "hook":
                 d = 2
-                poly = [self.settings.hook_extra_height + d - 1, -90,
-                        4.5+hd, (90,1), slot-2, (90, 1), hd-1, 90, d,
-                        -90, 5.5, -90, self.settings.hook_extra_height + 1]
+                poly = [
+                    self.settings.hook_extra_height + d - 1,
+                    -90,
+                    4.5 + hd,
+                    (90, 1),
+                    slot - 2,
+                    (90, 1),
+                    hd - 1,
+                    90,
+                    d,
+                    -90,
+                    5.5,
+                    -90,
+                    self.settings.hook_extra_height + 1,
+                ]
             elif self.settings.bottom_hook == "stud":
-                poly = [self.settings.hook_extra_height, -90,
-                        6, (90, 1) , slot-2, (90, 1), 6, -90,
-                        self.settings.hook_extra_height]
+                poly = [
+                    self.settings.hook_extra_height,
+                    -90,
+                    6,
+                    (90, 1),
+                    slot - 2,
+                    (90, 1),
+                    6,
+                    -90,
+                    self.settings.hook_extra_height,
+                ]
             else:
-                poly = [2*self.settings.hook_extra_height + slot]
+                poly = [2 * self.settings.hook_extra_height + slot]
 
         if self._reversed:
             poly = reversed(poly)
@@ -269,37 +344,38 @@ class SlatWallEdge(WallEdge):
     def margin(self) -> float:
         return self.settings.hook_depth + self.settings.hook_distance
 
+
 class SlatWallSettings(WallSettings):
     """Settings for SlatWallEdges
-Values:
+    Values:
 
-* absolute_params
+    * absolute_params
 
- * bottom_hook : "hook" : "spring", "stud" or "none"
- * pitch : 101.6 : vertical spacing of slots middle to middle (in mm)
- * hook_depth : 4.0 : horizontal width of the hook
- * hook_distance : 5.5 : horizontal space to the hook
- * hook_height : 6.0 : height of the horizontal bar of the hook
- * hook_overall_height : 12.0 : height of the hook top to bottom
+     * bottom_hook : "hook" : "spring", "stud" or "none"
+     * pitch : 101.6 : vertical spacing of slots middle to middle (in mm)
+     * hook_depth : 4.0 : horizontal width of the hook
+     * hook_distance : 5.5 : horizontal space to the hook
+     * hook_height : 6.0 : height of the horizontal bar of the hook
+     * hook_overall_height : 12.0 : height of the hook top to bottom
 
-* relative (in multiples of thickness)
+    * relative (in multiples of thickness)
 
- * hook_extra_height : 2.0 : space surrounding connectors (multiples of thickness)
- * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
+     * hook_extra_height : 2.0 : space surrounding connectors (multiples of thickness)
+     * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
 
-"""
+    """
 
     absolute_params = {
-        "bottom_hook" : ("hook", "spring", "stud", "none"),
-        "pitch" : 101.6,
-        "hook_depth" : 4.0,
-        "hook_distance" : 5.5,
-        "hook_height" : 6.0,
-        "hook_overall_height" : 12.0,
+        "bottom_hook": ("hook", "spring", "stud", "none"),
+        "pitch": 101.6,
+        "hook_depth": 4.0,
+        "hook_distance": 5.5,
+        "hook_height": 6.0,
+        "hook_overall_height": 12.0,
     }
 
     relative_params = {
-        "hook_extra_height" : 2.0,
+        "hook_extra_height": 2.0,
         "edge_width": 1.0,
     }
 
@@ -310,6 +386,7 @@ Values:
 ####     DIN rail
 #############################################################################
 
+
 class DinRailEdge(WallEdge):
 
     def lengths(self, length):
@@ -317,24 +394,43 @@ class DinRailEdge(WallEdge):
             return [length]
         if length > 50 and self.settings.bottom == "stud":
             return [0, 20, length - 40, 20]
-        return [0, 20,
-                length - 20]
+        return [0, 20, length - 20]
 
     def _section(self, nr, length):
         d = self.settings.depth
 
         if nr == 0:
-            r = 1.
-            poly = [0, -90, d-0.5-r, (90, r), 15+3-2*r, (90, r),
-                    d-4-r, 45,
-                    4*2**.5, -45, .5, -90, 6]
+            r = 1.0
+            poly = [
+                0,
+                -90,
+                d - 0.5 - r,
+                (90, r),
+                15 + 3 - 2 * r,
+                (90, r),
+                d - 4 - r,
+                45,
+                4 * 2**0.5,
+                -45,
+                0.5,
+                -90,
+                6,
+            ]
         elif nr == 1:
             slot = 20
             if self.settings.bottom == "stud":
-                r = 1.
-                poly = [0, -90, 7.5-r, (90, r),
-                        slot - 2*r,
-                        (90, r), 7.5-r, -90, 0]
+                r = 1.0
+                poly = [
+                    0,
+                    -90,
+                    7.5 - r,
+                    (90, r),
+                    slot - 2 * r,
+                    (90, r),
+                    7.5 - r,
+                    -90,
+                    0,
+                ]
             else:
                 poly = [slot]
         if self._reversed:
@@ -344,24 +440,25 @@ class DinRailEdge(WallEdge):
     def margin(self) -> float:
         return self.settings.depth
 
+
 class DinRailSettings(WallSettings):
     """Settings for DinRailEdges
-Values:
+    Values:
 
-* absolute_params
+    * absolute_params
 
- * bottom : "stud" : "stud" or "none"
- * depth : 4.0 : horizontal width of the hook
+     * bottom : "stud" : "stud" or "none"
+     * depth : 4.0 : horizontal width of the hook
 
-* relative (in multiples of thickness)
+    * relative (in multiples of thickness)
 
- * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
+     * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
 
-"""
+    """
 
     absolute_params = {
-        "bottom" : ("stud", "none"),
-        "depth" : 8.0,
+        "bottom": ("stud", "none"),
+        "depth": 8.0,
     }
 
     relative_params = {
@@ -370,9 +467,11 @@ Values:
 
     base_class = DinRailEdge
 
+
 #############################################################################
 ####     French Cleats
 #############################################################################
+
 
 class FrenchCleatEdge(WallEdge):
 
@@ -382,36 +481,50 @@ class FrenchCleatEdge(WallEdge):
         s = self.settings.spacing
         h = d * math.tan(math.radians(self.settings.angle))
         # make small enough to not have finger holes
-        top = 0.5*t
+        top = 0.5 * t
         bottom = 0.5 * t
-        if length < top + bottom + 1.5*d + h:
+        if length < top + bottom + 1.5 * d + h:
             return [length]
-        if length > top + bottom + 2*t + 1.5*d + h and \
-           self.settings.bottom == "stud":
-            return [top, 1.5*d + h, length - top - bottom - 2.5*d - h,
-                    d, bottom]
-        if length > top + bottom + 2.5*d + s and \
-           self.settings.bottom == "hook":
-            dist = ((length - top - t - 1.5*d - h) // s ) * s - 1.5*d - h
-            return [top, 1.5*d + h, dist, 1.5*d + h, length-dist-top-3*d-2*h]
-        return [top, 2.5*d, length-top-2.5*d]
+        if (
+            length > top + bottom + 2 * t + 1.5 * d + h
+            and self.settings.bottom == "stud"
+        ):
+            return [top, 1.5 * d + h, length - top - bottom - 2.5 * d - h, d, bottom]
+        if length > top + bottom + 2.5 * d + s and self.settings.bottom == "hook":
+            dist = ((length - top - t - 1.5 * d - h) // s) * s - 1.5 * d - h
+            return [
+                top,
+                1.5 * d + h,
+                dist,
+                1.5 * d + h,
+                length - dist - top - 3 * d - 2 * h,
+            ]
+        return [top, 2.5 * d, length - top - 2.5 * d]
 
     def _section(self, nr, length):
         d = self.settings.depth
         t = self.settings.thickness
-        r = min(0.5*t, 0.1*d)
+        r = min(0.5 * t, 0.1 * d)
         a = self.settings.angle
         h = d * math.tan(math.radians(a))
         l = d / math.cos(math.radians(a))
 
         if nr == 0 or self.settings.bottom == "hook":
-            poly = [0, -90, 0, (90, d), .5*d+h, 90+a, l, -90-a, length-1.5*d]
+            poly = [
+                0,
+                -90,
+                0,
+                (90, d),
+                0.5 * d + h,
+                90 + a,
+                l,
+                -90 - a,
+                length - 1.5 * d,
+            ]
         elif nr == 1:
             if self.settings.bottom == "stud":
-                r = min(t, length/4, d)
-                poly = [0, -90, d-r, (90, r),
-                        length - 2*r,
-                        (90, r), d-r, -90, 0]
+                r = min(t, length / 4, d)
+                poly = [0, -90, d - r, (90, r), length - 2 * r, (90, r), d - r, -90, 0]
             else:
                 poly = [length]
         if self._reversed:
@@ -421,28 +534,29 @@ class FrenchCleatEdge(WallEdge):
     def margin(self) -> float:
         return self.settings.depth
 
+
 class FrenchCleatSettings(WallSettings):
     """Settings for FrenchCleatEdges
-Values:
+    Values:
 
-* absolute_params
+    * absolute_params
 
- * bottom : "stud" : "stud" to brace against the wall, "hook" for attaching to a second cleat or "none" for just straight
- * depth : 18.0 : horizontal width of the hook in mm
- * angle : 45.0 : angle of the cut (0 for horizontal)
- * spacing : 200.0 : distance of the cleats in mm (for bottom hook)
+     * bottom : "stud" : "stud" to brace against the wall, "hook" for attaching to a second cleat or "none" for just straight
+     * depth : 18.0 : horizontal width of the hook in mm
+     * angle : 45.0 : angle of the cut (0 for horizontal)
+     * spacing : 200.0 : distance of the cleats in mm (for bottom hook)
 
-* relative (in multiples of thickness)
+    * relative (in multiples of thickness)
 
- * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
+     * edge_width : 1.0 : space below holes of FingerHoleEdge (multiples of thickness)
 
-"""
+    """
 
     absolute_params = {
-        "bottom" : ("stud", "hook", "none"),
-        "depth" : 18.0,
-        "spacing" : 200.0,
-        "angle" : 45.0,
+        "bottom": ("stud", "hook", "none"),
+        "depth": 18.0,
+        "spacing": 200.0,
+        "angle": 45.0,
     }
 
     relative_params = {
@@ -451,9 +565,11 @@ Values:
 
     base_class = FrenchCleatEdge
 
+
 #############################################################################
 ####     Skadis
 #############################################################################
+
 
 class SkadisEdge(WallEdge):
 
@@ -462,10 +578,10 @@ class SkadisEdge(WallEdge):
             return [length]
         if self.settings.style == "hooks":
             return [0] + ([11, 29] * int(length // 40)) + [length % 40]
-        elif self.settings.style == "hook+stud" and length > 40+15:
+        elif self.settings.style == "hook+stud" and length > 40 + 15:
             return [0, 11, 29, 10, length - 11 - 29 - 10]
         else:
-            return [0, 11, length-11]
+            return [0, 11, length - 11]
 
     def _section(self, nr, length):
         poly = [length]
@@ -476,11 +592,24 @@ class SkadisEdge(WallEdge):
         h = 4.8
         print(nr)
         if nr == 0 or self.settings.style == "hooks":
-            poly = [0, -90, b+h-r, (90, r), 10-2*r, (90, r),
-                    h-r-5*math.tan(ar), 90-a,
-                    5/math.cos(ar), -90+a, b-r, (-90, r), length-r-5]
+            poly = [
+                0,
+                -90,
+                b + h - r,
+                (90, r),
+                10 - 2 * r,
+                (90, r),
+                h - r - 5 * math.tan(ar),
+                90 - a,
+                5 / math.cos(ar),
+                -90 + a,
+                b - r,
+                (-90, r),
+                length - r - 5,
+            ]
         else:
-            poly = [0, -90, b, (90, 2), 10-4, (90, 2), b, -90, length-10]
+            # v- incorrect stud, needs offset
+            poly = [0, -90, b, (90, 2), 10 - 4, (90, 2), b, -90, length - 10]
         if self._reversed:
             poly = reversed(poly)
         return self.polyline(*poly)
@@ -488,20 +617,20 @@ class SkadisEdge(WallEdge):
     def margin(self):
         return self.settings.board_thickness + 4.8
 
+
 class SkadisSettings(WallSettings):
-
     """Settings for SkadisEdges
-Values:
+    Values:
 
-* absolute_params
+    * absolute_params
 
- * style : "hooks" : How to hook into the wall
- * board_thickness : 5.1 : Thickness of the Skandis board
-"""
+     * style : "hooks" : How to hook into the wall
+     * board_thickness : 5.1 : Thickness of the Skandis board
+    """
 
     base_class = SkadisEdge
 
     absolute_params = {
-        "style" : ("hooks", "hook+stud", "single"),
-        "board_thickness" : 5.1,
-        }
+        "style": ("hooks", "hook+stud", "single"),
+        "board_thickness": 5.1,
+    }

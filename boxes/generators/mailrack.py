@@ -97,7 +97,7 @@ class MailRack(RaiBase):
         self.add_float_arg("side_angled_length", 170)
         self.add_float_arg("floor_depth", 50)
         self.add_float_arg("cutout_height", 10)
-        self.add_float_arg("d_from_bottom", 30)
+        self.add_float_arg("cutout_d_from_bottom", 30)
         self.argparser.add_argument(
             "--n_cutouts",
             action="store",
@@ -227,7 +227,8 @@ class MailRack(RaiBase):
         self.apply_preset()
         super().open()
 
-    def apply_preset(self):
+    @inject_shortcuts
+    def apply_preset(self, cos_a):
         if not self.preset:
             return
         me = self.edgesettings["Mounting"]
@@ -236,6 +237,36 @@ class MailRack(RaiBase):
         self.thickness = 3.175  # 1/8 inch
         self.top_style = "symmetric"
         self.middle_style = MIDDLE_POCKETS_IN_FINGERS_OUT
+
+        def fit_tilted_boxes(
+            max_length,
+            max_width,
+            max_h,
+            nx: int,
+            nh: int,
+            len_frac=0.6,
+            wiggle=5.0,
+        ):
+            # height spacing to fit biggest assortment box plus change
+            self.sh = [(max_h + wiggle) / cos_a] * nh  # 8
+            self.sx = [max_width + wiggle] * nx
+            self.side_angled_length = max_length * len_frac
+            self.floor_depth = cos_a * max_h
+            # TODO: for precise angled fit of rectangular objects,
+            # we should have:
+            #   * bottom level should not have a horizontal floor (i.e. should be all slanted)
+            #   * all levels above should have a calculated tilted size, something like ...
+            #     some trig relationship between floor and angle and the rest...
+
+        def no_nameplate():
+            self.plate_slot_width = self.plate_slot_distance = self.plate_slot_depth = 0
+
+        def no_front_cutout():
+            self.cutout_d_from_bottom = self.cutout_height = self.cutout_width = 0
+
+        def no_hanging():
+            me["num"] = 0
+
         if self.preset == "15leroy":
             self.sh = [160] * 2
             self.sx = [240] * 3
@@ -246,13 +277,26 @@ class MailRack(RaiBase):
             self.plate_slot_width = 20
             self.plate_slot_distance = 60
             self.plate_slot_depth = self.thickness
-            self.d_from_bottom = 20
+            self.cutout_d_from_bottom = 20
             self.cutout_height = 15
             self.cutout_width = 70
 
             me["d_shaft"] = 3.6  # 3.45 plus margin
             me["d_head"] = 6.5  # 5.48 plus margin
             me["num"] = 2  # len(self.sx)
+        elif self.preset == "meds-containers":
+            self.alpha_deg = 45
+            # size: (27.5, 18, 4.8)
+            fit_tilted_boxes(
+                max_length=275,
+                max_width=180,
+                max_h=48,
+                nx=3,
+                nh=3,
+            )
+            no_nameplate()
+            no_front_cutout()
+            no_hanging()
         elif self.preset == "skadis-assortments":
             # assortment box sizes:
             #   (19.8 13.5 2.5)
@@ -265,51 +309,26 @@ class MailRack(RaiBase):
             #   (15.0 10.8 2.0)
             # => maximum: (19.8 14.0 3.7)
             self.alpha_deg = 45
-            max_x, max_d, max_h = 140, 198, 37
-            wiggle = 5
-
-            sh = (max_h + wiggle) / cos(
-                radians(self.alpha_deg)
-            )  # height spacing to fit biggest assortment box plus change
-
-            self.sh = [sh] * 3  # 8
-            self.sx = [max_x + wiggle] * 2
-
-            self.side_angled_length = max_d * 0.6
-            self.floor_depth = cos(radians(self.alpha_deg)) * max_h
-
-            # TODO: for precise angled fit of rectangular objects,
-            # we should have:
-            #   * bottom level should not have a horizontal floor (i.e. should be all slanted)
-            #   * all levels above should have a calculated tilted size, something like ...
-            #     some trig relationship between floor and angle and the rest...
-
-            self.plate_slot_width = 20
-            self.plate_slot_distance = 60
-            self.plate_slot_depth = self.thickness
-            self.d_from_bottom = 20
-            self.cutout_height = 15
-            self.cutout_width = 70
-
-            me["d_shaft"] = 3.6  # 3.45 plus margin
-            me["d_head"] = 6.5  # 5.48 plus margin
-            me["num"] = 2  # len(self.sx)
+            fit_tilted_boxes(
+                max_length=198,
+                max_width=140,
+                max_h=37,
+                nx=2,
+                nh=3,
+            )
+            no_nameplate()
+            no_front_cutout()
+            no_hanging()
         elif self.preset == "test-noplate":
-            self.d_from_bottom = 50
-            self.cutout_height = 5
-            self.cutout_width = 20
             self.sh = [20] * 1
             self.sx = [20] * 2
             self.alpha_deg = 60
             self.side_angled_length = 50
             self.floor_depth = 30
-
-            self.plate_slot_width = 0
-            self.plate_slot_distance = 0
-            self.plate_slot_depth = 0
-
-            me["num"] = 0
-
+            no_nameplate()
+            self.cutout_d_from_bottom = 50
+            self.cutout_height = 5
+            self.cutout_width = 20
         else:
             raise ValueError()
 
@@ -535,7 +554,8 @@ class MailRack(RaiBase):
 
                 space = (sx[0] + f) / self.n_cutouts - self.cutout_width
                 self.moveTo(
-                    (space + f) / 2, -self.cutout_height + zag - self.d_from_bottom
+                    (space + f) / 2,
+                    -self.cutout_height + zag - self.cutout_d_from_bottom,
                 )
 
                 for _ in range(len(sx) * self.n_cutouts):

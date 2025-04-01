@@ -327,13 +327,13 @@ class MailRack(RaiBase):
         return Element.pack(
             self,
             self.back(),
-            # self.ystack(
-            #    self.midfloors(),
-            #    *(self.front(yi) for yi in range(len(sheff))),
-            #    self.bottom_floor(),
-            # ),
-            # *(self.side(is_inner=False) for _ in range(2)),
-            # *(self.side(is_inner=True) for _ in range(len(self.sx) - 1)),
+            self.ystack(
+                self.midfloors(),
+                *(self.front(yi) for yi in range(len(sheff))),
+                self.bottom_floor(),
+            ),
+            *(self.side(is_inner=False) for _ in range(2)),
+            *(self.side(is_inner=True) for _ in range(len(self.sx) - 1)),
         )
 
     @inject_shortcuts

@@ -1269,9 +1269,6 @@ class Boxes:
         if not dontdraw:
             if before:
                 # paint debug rectangle
-                import traceback
-
-                #traceback.print_stack()
                 if self.debug:
                    with self.saved_context():
                        self.set_source_color(Color.ANNOTATIONS)
@@ -2921,12 +2918,12 @@ class Boxes:
             edge = edges[(i//2)%len(edges)]
             edge(l)
             self.edge(length_correction)
-            msg = f"{l=} "
+            parts = f"l={fmt_mm(l)}"
             if length_correction:
-                msg += f"l_corr={length_correction} "
+                parts.append(f"l_corr={fmt_mm(length_correction)}")
             if next_angle:
-                msg += f"{next_angle=}"
-            logger.info(msg)
+                parts.append(fmt_deg(next_angle))
+            logger.info(" ".join(parts))
             self.corner(next_angle, tabs=1)
 
         print("polygonWall finished")

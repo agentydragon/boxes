@@ -102,5 +102,5 @@ class TestSVG:
             new.write_bytes(boxData.getvalue())
 
             pytest.fail(
-                f"open {base} --- SVG files are not equal. If change is intended, please update example files."
+                f"open {reference} &; open {new} &; --- SVGs not equal. If change is intended, please update example files."
             )

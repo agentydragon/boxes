@@ -4,6 +4,7 @@ import codecs
 import io
 import logging
 import math
+import sys
 import traceback
 from functools import lru_cache
 from typing import Any
@@ -18,6 +19,10 @@ EPS = 1e-4
 PADDING = 10
 
 RANDOMIZE_COLORS = False  # enable to ease check for continuity of paths
+
+def check_coordinates(*vs):
+    for v in vs:
+        assert isinstance(v, (int, float)) and not isinstance(v, np.float64), f"Unhandled coordinate type: {type(v)} - {v!r}"
 
 
 def reorder_attributes(root) -> None:
@@ -138,17 +143,13 @@ class Part:
 
     def append(self, *path):
         from boxes.generators.raibase import fmt
-        parts = []
-        for x in path:
-            if isinstance(x, str):
-                parts.append(x)
-            elif isinstance(x, np.float64):
-                parts.append(fmt(x))
-            else:
-                parts.append(repr(x))
-        print(f"Part:{id(self)} append {' '.join(parts)}")
-
-        
+        match path:
+            case ('L', float(a), float(b)):
+                self.logger.info(f"append L {fmt(a)} {fmt(b)}")
+            case ('C', float(a), float(b), float(c), float(d), float(e), float(f)):
+                self.logger.info(f"append C {fmt(a)} {fmt(b)} {fmt(c)} {fmt(d)} {fmt(e)} {fmt(f)}")
+            case _:
+                self.logger.info(f"append {path!r}")
         #traceback.print_stack(file=sys.stdout)
         self.path.append(list(path))
 
@@ -298,25 +299,30 @@ class Context:
     ## transformations
 
     def translate(self, x, y):
+        check_coordinates(x, y)
         self._m *= Affine.translation(x, y)
         self._xy = (0, 0)
 
     def scale(self, sx, sy):
+        check_coordinates(sx, sy)
         print(f"scale {sx=} {sy=}")
         self._m *= Affine.scale(sx, sy)
 
     def rotate(self, r):
+        check_coordinates(r)
         self._m *= Affine.rotation(180 * r / math.pi)
 
     def set_line_width(self, lw):
         self._lw = lw
 
     def set_source_rgb(self, r, g, b):
+        check_coordinates(r, g, b)
         self._rgb = (r, g, b)
 
     ## path methods
 
     def _line_to(self, x, y):
+        check_coordinates(x, y)
         self._add_move()
         x1, y1 = self._mxy
         self._xy = x, y
@@ -328,13 +334,16 @@ class Context:
         self._dwg.move_to(*self._mxy)
 
     def move_to(self, x, y):
+        check_coordinates(x, y)
         self._xy = (x, y)
         self._mxy = self._m * self._xy
 
     def line_to(self, x, y):
+        check_coordinates(x, y)
         self._line_to(x, y)
 
     def _arc(self, xc, yc, radius, angle1, angle2, direction):
+        check_coordinates(xc, yc, radius, angle1, angle2)
         if abs(angle1 - angle2) < EPS or radius < EPS:
             return
         x1, y1 = radius * math.cos(angle1) + xc, radius * math.sin(angle1) + yc
@@ -376,6 +385,7 @@ class Context:
         mx1, my1 = self._m * (x1, y1)
         mx2, my2 = self._m * (x2, y2)
         mx3, my3 = self._m * (x3, y3)
+        check_coordinates(mx1, my1, mx2, my2, mx3, my3)
         self._add_move()
         self._dwg.append("C", mx3, my3, mx1, my1, mx2, my2)  # destination first!
         self._xy = (x3, y3)
@@ -402,6 +412,7 @@ class Context:
         params = {"ff": self._ff, "fs": self._fs, "lw": self._lw, "rgb": self._rgb}
         params.update(args)
         mx0, my0 = self._m * self._xy
+        check_coordinates(mx0, my0)
         m = self._m
         self._dwg.append("T", mx0, my0, m, text, params)
 
@@ -411,6 +422,7 @@ class Context:
         return (0, 0, 0.6 * fs * len(text), 0.65 * fs, fs * 0.1, 0)
 
     def rectangle(self, x, y, width, height):
+        check_coordinates(x, y)
 
         # todo: better check for empty path?
         self.stroke()

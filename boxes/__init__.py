@@ -69,6 +69,11 @@ def restore(func):
     return f
 
 
+def check_coordinates(*vs):
+    for v in vs:
+        assert isinstance(v, (int, float)), f"Unhandled coordinate type: {type(v)}"
+
+
 def holeCol(func):
     """
     Wrapper: color holes differently
@@ -803,6 +808,8 @@ class Boxes:
         :param degrees: angle
         :param radius:  (Default value = 0)
         """
+        from boxes.generators.raibase import fmt_deg
+        print(f"corner({fmt_deg(degrees)})")
 
         try:
             degrees, radius = degrees
@@ -1466,6 +1473,7 @@ class Boxes:
         self.corner(-360 + 2 * a, rh, tabs)
         self.corner(90 - a, 0, tabs)
         self.edge(2 * rs, tabs)
+        print("end mounting hole")
 
     @restore
     def text(self, text, x: float =0, y: float=0, angle:float=0, align="", fontsize=10, color=[0.0, 0.0, 0.0], font="Arial"):
@@ -1478,6 +1486,7 @@ class Boxes:
         :param angle:  (Default value = 0)
         :param align:  (Default value = "") string with combinations of (top|middle|bottom) and (left|center|right) separated by a space
         """
+        check_coordinates(x, y)
         self.moveTo(x, y, angle)
         text = text.split("\n")
 

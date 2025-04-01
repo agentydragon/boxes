@@ -208,7 +208,7 @@ class TapeHolder2(RaiBase):
             ]
             * 2
         )
-        return Element.from_item(w).is_part("front top").close_part("front top")
+        return Element.from_item(w, is_part="front top")
 
     @inject_shortcuts
     def front_down(self, thickness, inner_width):
@@ -223,7 +223,7 @@ class TapeHolder2(RaiBase):
             Turn(90),
             top_bottom,
         )
-        return Element.from_item(w).is_part("front down").close_part("front down")
+        return Element.from_item(w, is_part="front down")
 
     @inject_shortcuts
     def inner_side_insert(
@@ -277,11 +277,7 @@ class TapeHolder2(RaiBase):
             edge_turn,
             one_side,
         )
-        return (
-            Element.from_item(w)
-            .is_part("inner side insert")
-            .close_part("inner side insert")
-        )
+        return Element.from_item(w, is_part="inner side insert")
 
     @inject_shortcuts
     def side(
@@ -359,12 +355,7 @@ class TapeHolder2(RaiBase):
                     dist=slot_length,
                 )
 
-        return (
-            Element.from_item(w)
-            .add_render(additions)
-            .is_part("side")
-            .close_part("side")
-        )
+        return Element.from_item(w, is_part="side").add_render(additions)
 
     def _multimark(self, x=0, y=0):
         self.moveTo(x, y)
@@ -425,12 +416,7 @@ class TapeHolder2(RaiBase):
         def additions():
             self.fingerHolesAt(thickness * 0.5, 0, inner_diameter, 90)
 
-        return (
-            Element.from_item(w)
-            .add_render(additions)
-            .is_part("front down")
-            .close_part("front down")
-        )
+        return Element.from_item(w, is_part="front down").add_render(additions)
 
     @inject_shortcuts
     def frontside(self, fingered_side, thickness, inner_width):
@@ -453,7 +439,7 @@ class TapeHolder2(RaiBase):
             ###
             vertical,  # <- the side where there's fingers will get lengthened?
         )
-        return Element.from_item(w).is_part("frontside").close_part("frontside")
+        return Element.from_item(w, is_part="frontside")
 
     @inject_shortcuts
     def tab(self, inner_diameter, thickness):
@@ -471,7 +457,7 @@ class TapeHolder2(RaiBase):
             ###
             vertical,
         )
-        return Element.from_item(w).is_part("tab").close_part("tab")
+        return Element.from_item(w, is_part="tab")
 
     def makecircle(self):
         def render():
@@ -485,17 +471,12 @@ class TapeHolder2(RaiBase):
             self.ctx.stroke()
             # self.rectangular_etching(d.centre_x, d.centre_y, d.photo_x, d.photo_y)
 
-        return (
-            Element(
-                position=np.array((0, 0), dtype=float),
-                bbox=BBox(
-                    minx=0, miny=0, maxx=self.spoolhead, maxy=self.outer_diameter
-                ),
-                render=[render],
-                boxes=self,
-            )
-            .is_part("makecircle")
-            .close_part("makecircle")
+        return Element(
+            position=np.array((0, 0), dtype=float),
+            bbox=BBox(minx=0, miny=0, maxx=self.spoolhead, maxy=self.outer_diameter),
+            render=[render],
+            boxes=self,
+            is_part="makecircle",
         )
 
     def open(self):
@@ -504,7 +485,7 @@ class TapeHolder2(RaiBase):
 
     # def calisquare(self):
     #     w = self.wall_builder("calisquare").add([Plain(10), Turn(90)] * 4)
-    #     return Element.from_item(w).is_part("calisquare").close_part("calisquare")
+    #     return Element.from_item(w, is_part="calisquare")
 
     @inject_shortcuts
     def backpiece(self, backedge, thickness, inner_width, opening, top):
@@ -529,10 +510,10 @@ class TapeHolder2(RaiBase):
             list(reversed(back)),
             Turn(-90),
         )
-        return Element.from_item(w).is_part("backpiece").close_part("backpiece")
+        return Element.from_item(w, is_part="backpiece")
 
     @inject_shortcuts
-    def render(self, angle_between_sides, thickness):
+    def build(self, angle_between_sides, thickness):
         FingerJointSettings(
             thickness,
             **self.edgesettings.get("FingerJoint"),
@@ -543,7 +524,7 @@ class TapeHolder2(RaiBase):
             **(self.edgesettings.get("FingerJoint") | {"extra_length": 1}),
         ).edgeObjects(self, chars="bB")
 
-        self.ystack(
+        return self.ystack(
             # self.calisquare(),
             self.xstack(
                 self.side(left=True),
@@ -564,4 +545,4 @@ class TapeHolder2(RaiBase):
                 # TODO: add some outer circles here
                 # TODO: top thing has broken finger holes
             ),
-        ).do_render()
+        )

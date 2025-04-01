@@ -445,6 +445,7 @@ class MountingEdge(BaseEdge):
         return 0.0
 
     def __call__(self, length, **kw):
+        print('---begin MountingEdge---')
         if length == 0.0:
             return
 
@@ -517,6 +518,7 @@ class MountingEdge(BaseEdge):
                 x += width / 2
                 x += gap
             self.edge(length)
+        print('---end MountingEdge---')
 
 
 #############################################################################
@@ -972,8 +974,6 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
 
     def __call__(self, length, bedBolts=None, bedBoltSettings=None, **kw):
 
-        self.logger.info(f"FingerJointEdge.call({length=}, {kw=})")
-
         positive = self.positive
         t = self.settings.thickness
 
@@ -983,7 +983,11 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
         play = self.settings.play
 
         fingers, leftover = self.calcFingers(length, bedBolts)
-        self.logger.info(f"  {fingers=} {leftover=}")
+        from boxes.generators.raibase import fmt_mm
+        if kw:
+            kw_part = f", {kw=}"
+        else: 
+            kw_part = ""
 
         # not enough space for normal fingers - use small rectangular one
         if (fingers == 0 and f and
@@ -1002,7 +1006,7 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
 
         l1, l2 = self.fingerLength(self.settings.angle)
         h = l1 - l2
-        self.logger.info(f"  {l1=} {l2=} {h=}")
+        self.logger.info(f"FingerJointEdge(length={fmt_mm(length)}{kw_part}) → {fingers} fingers, leftover={fmt_mm(leftover)} l1={fmt_mm(l1)} l2={fmt_mm(l2)} h={fmt_mm(h)}")
 
         d = (bedBoltSettings or self.bedBoltSettings)[0]
 
@@ -1020,7 +1024,6 @@ class FingerJointEdge(BaseEdge, FingerJointBase):
                              positive, i < fingers // 2)
 
         self.edge(leftover / 2.0, tabs=1)
-        self.logger.info("")
 
     def margin(self) -> float:
         """ """

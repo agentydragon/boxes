@@ -7,19 +7,20 @@ import functools
 import inspect
 import itertools
 import logging
+import math
 import random
+import sys
 from decimal import ROUND_HALF_UP, Decimal
 from math import cos, radians, sin
-from numbers import Number
-from textwrap import indent
 from typing import Iterable
 
 import numpy as np
+import pytest
 import tabulate
 from hamcrest import assert_that, contains_exactly, equal_to
 
 from boxes import Boxes, Color
-from boxes.edges import BaseEdge, FingerJointEdge, FingerJointSettings
+from boxes.edges import FingerJointEdge, FingerJointSettings
 
 PLAIN = "e"
 DEG_SIGN = "°"
@@ -27,10 +28,9 @@ ALPHA_SIGN = "α"
 
 
 def random_color():
-    # Generate a random hue and saturation
-    h = random.random()  # Hue: 0-1
+    h = random.random()
     s = random.uniform(0.5, 1)  # Ensure some saturation (avoid washed-out colors)
-    v = random.uniform(0.6, 0.7)  # Avoid too-bright colors that blend into white
+    v = random.uniform(0.5, 0.8)  # Avoid too-bright colors that blend into white
     # Convert HSV to RGB
     return colorsys.hsv_to_rgb(h, s, v)
 
@@ -54,6 +54,8 @@ def fmt(x, show_sign=False):
 
 
 def fmt_mm(x):
+    if x == 0:
+        return "0"
     return f"{fmt(x)}mm"
 
 
@@ -224,33 +226,6 @@ def inject_shortcuts(func):
     return wrapper
 
 
-#
-# def inject_shortcuts(func):
-#    """
-#    Returns a decorator that looks at the decorated function's parameter names
-#    and, for any that aren't provided in the call, attempts to inject them
-#    from 'data' (a dict).
-#    """
-#
-#    sig = inspect.signature(func)
-#
-#    @functools.wraps(func)
-#    def wrapper(self, *args, **kwargs):
-#        shortcuts = self.shortcuts
-#        assert set(kwargs).isdisjoint(shortcuts), "would overwrite shortcuts"
-#        used_shortcuts = set(sig.parameters) & set(shortcuts.keys())
-#
-#        # Bind call arguments to their parameter names
-#        bound = sig.bind_partial(
-#            self, *args, **kwargs, **dict_only_keys(shortcuts, used_shortcuts)
-#        )
-#        bound.apply_defaults()
-#        return func(*bound.args, **bound.kwargs)
-#
-#    return wrapper
-#
-
-
 class RaiBase(Boxes):
     def add_float_arg(self, name, default):
         self.argparser.add_argument(
@@ -310,7 +285,8 @@ class RaiBase(Boxes):
         assert isinstance(bbox, BBox)
 
         self.move(bbox.width, bbox.height, move, before=True)
-        self.moveTo(-bbox.minx, -bbox.miny)
+        x, y = np.array([-bbox.minx, -bbox.miny]).astype(float)
+        self.moveTo(x, y)
         yield
 
         self.move(bbox.width, bbox.height, move, label=label)
@@ -325,11 +301,7 @@ class RaiBase(Boxes):
             elements = elements[0]
         return self.stack(elements, orient="x")
 
-    def stack(
-        self,
-        elements,
-        orient,
-    ):
+    def stack(self, elements, orient):
         assert orient in "xy"
         arranged = []
 
@@ -350,12 +322,7 @@ class RaiBase(Boxes):
             arranged.append(e.translate(prev))
         return Element.union(self, arranged)
 
-    def build_element_grid(
-        self,
-        factory,
-        nx=1,
-        ny=1,
-    ):
+    def build_element_grid(self, factory, nx=1, ny=1):
         return self.ystack(
             self.xstack(factory(xi, yi) for xi in range(nx)) for yi in range(ny)
         )
@@ -371,8 +338,21 @@ class RaiBase(Boxes):
         """Allow invoking as moveTo(numpy coordinate)"""
         if isinstance(x, np.ndarray):
             degrees = y
-            x, y = x.astype(float)
+            x, y = x
+        x, y = float(x), float(y)
         super().moveTo(x, y, degrees)
+
+    def setup(self):
+        pass
+
+    def render(self):
+        self.setup()
+        full = self.build()
+        print(f"Cut material size: {fmt_mm(full.width)} x {fmt_mm(full.height)}")
+        full.do_render()
+
+    def build(self):
+        raise NotImplementedError()
 
 
 @dataclasses.dataclass
@@ -433,85 +413,7 @@ COLORS = [
 #        return length / 2, recess
 
 
-###@dataclasses.dataclass
-###class WallItem:
-###    section: Section
-###
-###    @property
-###    def length(self):
-###        return self.section.length
-###
-###    @property
-###    def edge(self):
-###        return self.section.edge
-###
-###    @property
-###    def text(self):
-###        return self.section.text
-###
-###    # start position
-###    start: np.array
-###    # end position
-###    end: np.array
-###
-###    @property
-###    def angle(self):
-###        delta = self.end - self.start
-###        angle = np.degrees(np.arctan2(delta[1], delta[0]))
-###        return angle % 360
-###
-###    @property
-###    def center(self):
-###        return (self.start + self.end) / 2
-###
-###
-###class Compound:
-###    def __init__(self, sections: Iterable[Section]):
-###        self.sections = list(sections)
-###
-###    @property
-###    def length(self):
-###        return sum(s.length for s in self.sections)
-###
-###    @classmethod
-###    def intersperse(
-###        cls,
-###        sep: Section | Iterable[Section],
-###        items: Iterable[Section],
-###        start: bool,
-###        end: bool,
-###    ) -> Compound:
-###        if isinstance(sep, Section):
-###            sep = itertools.repeat(sep)
-###        return cls(list(intersperse(sep, items, start=start, end=end)))
-###
-###    def __reversed__(self):
-###        return Compound(reversed(self.sections))
-###
-###    def __iter__(self):
-###        return iter(self.sections)
-###
-###    def __getitem__(self, key):
-###        """implement index access and slicing"""
-###        assert isinstance(key, (int, slice))
-###        return self.sections[key]
-###
-###
-###class Section:
-###    def __init__(self, length, edge, text=None):
-###        if isinstance(length, np.float64):
-###            length = float(length)
-###        assert isinstance(length, (int, float))
-###
-###        assert (isinstance(edge, str) and len(edge) == 1) or isinstance(edge,BaseEdge)
-###        # assert edge in "efFaAbB", f"unknown {edge=}"
-###
-###        self.length = length
-###        self.edge = edge
-###        self.text = text
-
-
-def intersperse(sep, items, start: bool = False, end: bool = False):
+def _intersperse(sep, items, start: bool = False, end: bool = False):
     """
     Examples:
       intersperse([1,2,3,4,5,6,7], [10,20,30], start=True, end=True)
@@ -537,6 +439,10 @@ def intersperse(sep, items, start: bool = False, end: bool = False):
         yield sep  # next(sep_iter)
 
 
+def intersperse(sep, items, start: bool = False, end: bool = False):
+    return list(_intersperse(sep, items, start=start, end=end))
+
+
 @dataclasses.dataclass
 class Turn:
     angle: float
@@ -556,6 +462,26 @@ def Plain(*args, **kwargs):
 @dataclasses.dataclass
 class MultiEdge:
     edges: list[Edge]
+
+
+def slot(depth: float, length: float) -> MultiEdge:
+    """Start: facing into slot. End: facing continuation."""
+    assert isinstance(depth, (int, float))
+    assert isinstance(length, (int, float))
+    return MultiEdge(
+        [
+            Turn(90),
+            Plain(depth),
+            Turn(-90),
+            Plain(length),
+            Turn(-90),
+            Plain(depth),
+            Turn(90),
+        ]
+    )
+
+
+WallCommand = Turn | Edge | MultiEdge
 
 
 class Close:
@@ -618,12 +544,6 @@ class WallBuilder:
     def vector(self) -> np.array:
         return coord(cos(self.angle), sin(self.angle))
 
-    def slot(self, depth: float, length: float):
-        """Start: facing into slot. End: facing continuation."""
-        assert isinstance(depth, (int, float))
-        assert isinstance(length, (int, float))
-        self.plain(depth).turn(-90).plain(length).turn(-90).plain(depth).turn(-90)
-
     def plain(self, length: float) -> WallBuilder:
         return self.edge(length, PLAIN)
 
@@ -646,6 +566,10 @@ class WallBuilder:
 
             case Turn() | Edge() | Close():
                 self.commands.append(command)
+
+            case MultiEdge(commands):
+                for c in commands:
+                    self._add_one(c)
 
             case _:
                 raise ValueError(f"Unhandled {command=}")
@@ -704,33 +628,33 @@ class WallBuilder:
     def rendering_table(self):
         """display borders as passed to polygonWall."""
         rows = []
+        show_edge_repr = False
         for edge_turn in self.consolidate():
             if isinstance(edge_turn, Close):
-                rows.append(("Close", "", "", "", ""))
+                row = ["close", "", "", ""]
+                if show_edge_repr:
+                    row.append("")
+                rows.append(row)
                 continue
             edge, turn = edge_turn
-            rows.append(
-                (
-                    f"{edge.edge_type}",
-                    fmt_mm(edge.length),
-                    fmt_reldeg(turn.angle),
-                    edge.text,
-                    edge,
-                )
-            )
+            row = [
+                f"{edge.edge_type}",
+                fmt(edge.length),
+                fmt_reldeg(turn.angle),
+                edge.text,
+            ]
+            if show_edge_repr:
+                row.append("")
+            rows.append(row)
+        headers = ["type", "mm", ALPHA_SIGN, "text"]
+        if show_edge_repr:
+            headers.append("edge")
         return tabulate.tabulate(
             rows,
-            headers=["type", "length", f"{ALPHA_SIGN} {DEG_SIGN}", "text", "edge"],
+            headers=headers,
             showindex="always",
-            tablefmt="presto",
+            tablefmt="simple_outline",
         )
-
-    # def surround(self, lengths, last_angle, positive_edge, gap_size, gap_edge):
-    #    lengths = list(lengths)
-    #    for l in lengths:
-    #        self.add(gap_size, 0, gap_edge)
-    #        self.add(l, 0, positive_edge)
-    #    self.add(gap_size, last_angle, gap_edge)
 
     @property
     def debug(self) -> bool:
@@ -745,24 +669,14 @@ class WallBuilder:
         minx, miny, maxx, maxy = self.boxes._polygonWallExtend(borders, edges)
         return BBox(minx=minx, miny=miny, maxx=maxx, maxy=maxy)
 
-    def _wall_debug_callback(self, i):
-        c = random_color()
-        self.boxes.ctx.set_source_rgb(*c)
-        self.boxes.text(str(i), color=c, fontsize=5)
-        self.boxes.circle(0, 0, r=1)
-
     def render(
         self,
         move=None,
-        callback=None,
         turtle: bool = True,
         correct_corners: bool = True,
     ):
-        # print(f"Rendering WallBuilder {self.label}:")
-        callback = self._wall_debug_callback if self.debug else None
-
         position, angle = np.array([0, 0], dtype=float), 0
-        for c in self.commands:
+        for i, c in enumerate(self.commands):
             if isinstance(c, Close):
                 continue  # ...
             if isinstance(c, Turn):
@@ -771,35 +685,39 @@ class WallBuilder:
             if not isinstance(c, Edge):
                 raise ValueError(f"Unsupported {c = }")
 
-            delta = c.length * _direction_vector(angle)
-            middle = position + (delta / 2)
-            position += delta
-
-            # draw text in middle of item
-            x, y = middle.astype(float)
             if self.debug:
+                # if self.debug:
+                color = random_color()
+                x, y = position.astype(float)
                 # make the angle always upright
                 a = angle
                 if 90 < a < 270:
                     a -= 180
                 self.boxes.text(
-                    f"{(c.text or '')} {fmt_mm(c.length)}",
+                    str(i),
                     x=x,
                     y=y,
                     angle=a,
-                    fontsize=3,
+                    fontsize=5,
                     align="center bottom",
+                    color=color,
                 )
 
-        borders, edges = self.borders_edges()
-        self.boxes.polygonWall(
-            borders,
-            edge=edges,
-            correct_corners=correct_corners,
-            callback=callback,
-            move=move,
-            turtle=turtle,
-        )
+                delta = c.length * _direction_vector(angle)
+                middle = position + (delta / 2)
+                position += delta
+
+                # draw text in middle of item
+                cx, cy = middle.astype(float)
+                self.boxes.text(
+                    f"{(c.text or '')} {fmt_mm(c.length)}",
+                    x=cx,
+                    y=cy,
+                    angle=a,
+                    fontsize=3,
+                    align="center bottom",
+                    color=color,
+                )
 
         self.boxes.text(
             self.label,
@@ -808,6 +726,17 @@ class WallBuilder:
             fontsize=5,
             align="middle center",
             color=Color.ANNOTATIONS,
+        )
+
+        borders, edges = self.borders_edges()
+        self.boxes.polygonWall(
+            borders,
+            edge=edges,
+            correct_corners=correct_corners,
+            # TODO: set colors of edges
+            # callback=self._wall_callback,
+            move=move,
+            turtle=turtle,
         )
 
     @contextlib.contextmanager
@@ -823,6 +752,7 @@ class Element:
     bbox: BBox
     render: list[callable]
     boxes: Boxes
+    is_part: str | None
 
     @property
     def height(self):
@@ -836,16 +766,18 @@ class Element:
         assert isinstance(self.position, np.ndarray)
 
     @classmethod
-    def from_item(cls, obj):
+    def from_item(cls, obj, is_part: str | None = None):
         match obj:
             case Element():
-                return obj
+                raise Exception("a")
+                # return obj
             case WallBuilder():
                 return cls(
                     position=coord(0, 0),
                     bbox=obj.bbox,
                     render=[obj.render],
                     boxes=obj.boxes,
+                    is_part=is_part,
                 )
             case _:
                 raise ValueError(f"Unsupported {obj = }")
@@ -860,14 +792,20 @@ class Element:
             position=self.position + d,
             bbox=self.bbox.shift(d),
             render=self.render,
+            is_part=None,
         )
 
     def do_render(self):
         x, y = self.position.astype(float)
+        x, y = float(x), float(y)
+        if self.is_part:
+            self.boxes.ctx.new_part(self.is_part)
         for c in self.render:
             with self.boxes.saved_context():
                 self.boxes.moveTo(x, y)
                 c()
+        if self.is_part:
+            self.boxes.ctx.new_part(self.is_part)
 
     @classmethod
     def union(cls, boxes, elements):
@@ -878,7 +816,13 @@ class Element:
             for e in elements:
                 e.do_render()
 
-        return Element(position=coord(0, 0), bbox=bbox, render=[render], boxes=boxes)
+        return Element(
+            position=coord(0, 0),
+            bbox=bbox,
+            render=[render],
+            boxes=boxes,
+            is_part=None,
+        )
 
     def mirror(self):
         def render():
@@ -890,21 +834,139 @@ class Element:
             bbox=self.bbox,
             render=[render],
             boxes=self.boxes,
+            is_part=None,
         )
 
-    def is_part(self, name: str):
-        self.render = [lambda: self.boxes.ctx.new_part(name)] + self.render
-        return self
+    @classmethod
+    def pack(cls, boxes, *elements: "Element") -> "Element":
+        # Internal helper rectangle class.
+        class _Rect:
+            def __init__(self, x, y, w, h):
+                self.x = x
+                self.y = y
+                self.w = w
+                self.h = h
 
-    def close_part(self, name: str):
-        self.render.append(lambda: self.boxes.ctx.new_part(name))
-        return self
+            @property
+            def right(self):
+                return self.x + self.w
 
+            @property
+            def bottom(self):
+                return self.y + self.h
 
-import sys
+            def intersects(self, other: "_Rect") -> bool:
+                return not (
+                    other.x >= self.right
+                    or other.right <= self.x
+                    or other.y >= self.bottom
+                    or other.bottom <= self.y
+                )
 
-import pytest
-from hamcrest import assert_that, equal_to
+            def __repr__(self):
+                return f"_Rect({self.x}, {self.y}, {self.w}, {self.h})"
+
+        # MaxRects bin-packing helper.
+        class _MaxRectsBin:
+            def __init__(self, width, height):
+                self.width = width
+                self.height = height
+                self.free_rects = [_Rect(0, 0, width, height)]
+                self.used_rects = []
+
+            def insert(self, rect_w, rect_h):
+                best_score = None
+                best_node = None
+                for free in self.free_rects:
+                    if rect_w <= free.w and rect_h <= free.h:
+                        score = min(free.w - rect_w, free.h - rect_h)
+                        if best_score is None or score < best_score:
+                            best_score = score
+                            best_node = _Rect(free.x, free.y, rect_w, rect_h)
+                if best_node is None:
+                    return None  # No fit.
+                self.place_rect(best_node)
+                return best_node
+
+            def place_rect(self, node):
+                self.used_rects.append(node)
+                new_free_rects = []
+                for free in self.free_rects:
+                    if free.intersects(node):
+                        new_free_rects.extend(self.split_free_rect(free, node))
+                    else:
+                        new_free_rects.append(free)
+                self.free_rects = list(self.prune_free_list(new_free_rects))
+
+            def split_free_rect(self, free, used):
+                splits = []
+                if used.x > free.x and used.x < free.right:
+                    splits.append(_Rect(free.x, free.y, used.x - free.x, free.h))
+                if used.right < free.right:
+                    splits.append(
+                        _Rect(used.right, free.y, free.right - used.right, free.h)
+                    )
+                if used.y > free.y and used.y < free.bottom:
+                    splits.append(_Rect(free.x, free.y, free.w, used.y - free.y))
+                if used.bottom < free.bottom:
+                    splits.append(
+                        _Rect(free.x, used.bottom, free.w, free.bottom - used.bottom)
+                    )
+                return [r for r in splits if r.w > 0 and r.h > 0]
+
+            def prune_free_list(self, free_rects):
+                for r in free_rects:
+                    if any(
+                        r is not r2
+                        and (
+                            r.x >= r2.x
+                            and r.y >= r2.y
+                            and r.right <= r2.right
+                            and r.bottom <= r2.bottom
+                        )
+                        for r2 in free_rects
+                    ):
+                        continue
+                    yield r
+
+            def insert_all(self, rects):
+                placements = []
+                for w, h in rects:
+                    if (pos := self.insert(w, h)) is None:
+                        return None
+                    placements.append(pos)
+                return placements
+
+            @classmethod
+            def place(cls, rects):
+                total_area = sum(w * h for w, h in rects)
+                init_side = max(
+                    max(w for w, _h in rects),
+                    int(math.ceil(math.sqrt(total_area))),
+                )
+
+                for step in itertools.count():
+                    bin_size = init_side * (2**step)
+                    if placements := cls(bin_size, bin_size).insert_all(rects):
+                        return placements
+
+        # Try packing all rectangles into a square bin, enlarging if needed.
+
+        # Prepare list of (element, width, height) tuples.
+        # Use bbox dimensions from each element.
+        rects = [(e, e.bbox.width, e.bbox.height) for e in elements]
+        rects.sort(key=lambda item: item[1] * item[2], reverse=True)
+
+        return cls.union(
+            boxes,
+            [
+                elem.translate(coord(rect.x, rect.y))
+                for (elem, _, _), rect in zip(
+                    rects, _MaxRectsBin.place([(w, h) for _, w, h in rects])
+                )
+            ],
+        )
+
 
 # @pytest.mark.parametrize(
 #    "input,start,end,expected",

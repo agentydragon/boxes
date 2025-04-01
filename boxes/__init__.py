@@ -38,7 +38,7 @@ from shapely.ops import split
 
 from boxes import edges, formats, gears, parts, pulley
 from boxes.Color import *
-from boxes.fmt import fmt, fmt_deg, fmt_mm
+from boxes.fmt import fmt, fmt_deg, fmt_mm, fmt_reldeg
 from boxes.qrcode_factory import BoxesQrCodeFactory
 from boxes.vectors import kerf
 
@@ -2878,7 +2878,13 @@ class Boxes:
             e = edge[(i // 2)%len(edge)]
             str_parts.append(f"{e}:{fmt_mm(borders[i])}")
             if borders[i + 1] != 0:
-                str_parts.append(f"{fmt(borders[i + 1], show_sign=True)}°")
+                match borders[i + 1]:
+                    case int(angle) | float(angle):
+                        str_parts.append(fmt_reldeg(angle))
+                    case (float() | int(), float() | int()) | None:
+                        str_parts.append(repr(borders[i + 1]))
+                    case _:
+                        raise ValueError(f"unexpected {borders[i + 1] = !r}")
         print(" → ".join(str_parts))
 
         #print(f"{borders = }")
@@ -2919,7 +2925,13 @@ class Boxes:
             if length_correction:
                 str_parts.append(f"l_corr={fmt_mm(length_correction)}")
             if next_angle:
-                str_parts.append(fmt_deg(next_angle))
+                match next_angle:
+                    case int() | float() if next_angle:
+                        str_parts.append(f"{fmt_reldeg(next_angle)}°")
+                    case (float() | int(), float() | int()) | None:
+                        str_parts.append(repr(next_angle))
+                    case _:
+                        raise ValueError(f"unexpected {next_angle = !r}")
             logger.info(" ".join(str_parts))
             self.corner(next_angle, tabs=1)
 

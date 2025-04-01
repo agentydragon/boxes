@@ -2,7 +2,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 
 def fmt(x, show_sign=False):
-    d = Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    try:
+        d = Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except:
+        print(f"!!! {x!r} !!!")
+        raise
     s = str(d).rstrip("0").rstrip(".")
     if show_sign and x >= 0:
         s = "+" + s

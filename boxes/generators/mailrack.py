@@ -674,9 +674,8 @@ class MailRack(RaiBase):
             for iy, dy in enumerate(sheff):
                 with self.saved_context():
                     for ix, dx in enumerate(sx):
-                        # TODO: uncomment
-                        # if iy > 0:
-                        #    self.fingerHolesAt(0, 0, dx, 0)
+                        if iy > 0:
+                            self.fingerHolesAt(0, 0, dx, 0)
 
                         if ix > 0:
                             self.fingerHolesAt(-f / 2, f / 2, dy, 90)

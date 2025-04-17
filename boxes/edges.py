@@ -1122,7 +1122,6 @@ class FingerHoleEdge(BaseEdge):
         self.edge(length, tabs=2)
 
     def startwidth(self) -> float:
-        """ """
         return self.fingerHoles.settings.edge_width + self.settings.thickness
 
     def margin(self) -> float:

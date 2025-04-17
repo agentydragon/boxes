@@ -48,18 +48,18 @@ from boxes.generators.raibase import (
     SkippingFingerJoint,
     Turn,
     WallCommand,
+    mark,
     coord,
     inject_shortcuts,
     intersperse,
     slot,
+    FINGER,
+    FINGER_COUNTER,
 )
 
-FINGER = "f"
-FINGER_COUNTER = "F"
 ANGLED_POS = "b"
 ANGLED_NEG = "B"
 RIGHT_ARROW = "→"
-DOWN_ARROW = "↓"
 SKIP_EVEN = "a"
 SKIP_ODD = "A"
 SKIP_ODD_REVERSE = "@"
@@ -67,10 +67,6 @@ SKIP_ODD_REVERSE = "@"
 MIDDLE_POCKETS = "pockets"
 MIDDLE_POCKETS_IN_FINGERS_OUT = "pockets_in_fingers_out"
 MIDDLE_FINGERHOLES = "fingerholes"
-
-
-def mark(s):
-    return DOWN_ARROW + s + DOWN_ARROW
 
 
 def make_sections(xs, name, edge):
@@ -143,13 +139,6 @@ class MailRack(RaiBase):
             help="Distance of nameplate slots.",
         )
         self.addSettingsArgs(MountingSettings)
-        self.argparser.add_argument(
-            "--preset",
-            action="store",
-            type=str,
-            default="",
-        )
-        self.preset: str | None
         # self.cutout_width = "equal"
 
     @property
@@ -223,9 +212,13 @@ class MailRack(RaiBase):
             self, s, idx_predicate=lambda i: i % 2 == 1, reversed=True
         )
 
-    def open(self):
-        self.apply_preset()
-        super().open()
+    def _float_arg(self, name, **kwargs):
+        self.argparser.add_argument(
+            f"--{name}",
+            action="store",
+            type=float,
+            **kwargs,
+        )
 
     @inject_shortcuts
     def apply_preset(self, cos_a):

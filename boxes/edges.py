@@ -923,6 +923,7 @@ class FingerJointBase(ABC):
         fingerlength = self.settings.thickness * math.tan(math.radians(a))  # type: ignore
         b = 90 - 2 * a
         spacerecess = -math.sin(math.radians(b)) * fingerlength
+        print(f"{angle=} => {spacerecess=}")
         return fingerlength + self.settings.extra_length, spacerecess  # type: ignore
 
 

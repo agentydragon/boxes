@@ -25,6 +25,9 @@ from boxes.fmt import fmt, fmt_mm, fmt_reldeg
 PLAIN = "e"
 DEG_SIGN = "°"
 ALPHA_SIGN = "α"
+DOWN_ARROW = "↓"
+FINGER = "f"
+FINGER_COUNTER = "F"
 
 
 def random_color():
@@ -203,7 +206,24 @@ def inject_shortcuts(func):
 
 
 class RaiBase(Boxes):
-    def add_float_arg(self, name, default):
+    def __init__(self):
+        super().__init__()
+        self.argparser.add_argument(
+            "--preset",
+            action="store",
+            type=str,
+            default="",
+        )
+        self.preset: str | None
+
+    def open(self):
+        self.apply_preset()
+        super().open()
+
+    def apply_preset(self):
+        assert self.preset == ""
+
+    def add_float_arg(self, name, default: float | None = None):
         self.argparser.add_argument(
             f"--{name}",
             action="store",
@@ -429,6 +449,9 @@ class Edge:
     length: float
     edge_type: str
     text: str | None = None
+
+    def __post_init__(self):
+        assert isinstance(self.length, (float, np.float64, int)), f"{self.length = }"
 
 
 def Plain(*args, **kwargs):
@@ -674,7 +697,7 @@ class WallBuilder:
                     x=x,
                     y=y,
                     angle=a,
-                    fontsize=5,
+                    fontsize=3,
                     align="center bottom",
                     color=color,
                 )
@@ -690,7 +713,7 @@ class WallBuilder:
                     x=cx,
                     y=cy,
                     angle=a,
-                    fontsize=3,
+                    fontsize=2,
                     align="center bottom",
                     color=color,
                 )
@@ -699,7 +722,7 @@ class WallBuilder:
             self.label,
             x=self.bbox.center_x,
             y=self.bbox.center_y,
-            fontsize=5,
+            fontsize=3,
             align="middle center",
             color=Color.ANNOTATIONS,
         )
@@ -729,6 +752,7 @@ class Element:
     render: list[callable]
     boxes: Boxes
     is_part: str | None
+    color: None | tuple[float, float, float] = None
 
     @property
     def height(self):
@@ -742,7 +766,7 @@ class Element:
         assert isinstance(self.position, np.ndarray)
 
     @classmethod
-    def from_item(cls, obj, is_part: str | None = None):
+    def from_item(cls, obj, is_part: str | None = None, color: None | tuple[float, float, float] = None):
         match obj:
             case Element():
                 raise Exception("a")
@@ -754,6 +778,7 @@ class Element:
                     render=[obj.render],
                     boxes=obj.boxes,
                     is_part=is_part,
+                    color=color,
                 )
             case _:
                 raise ValueError(f"Unsupported {obj = }")
@@ -776,10 +801,19 @@ class Element:
         x, y = float(x), float(y)
         if self.is_part:
             self.boxes.ctx.new_part(self.is_part)
+
+        if self.color:
+            self.boxes.ctx.stroke()
+            self.boxes.set_source_color(self.color)
+
         for c in self.render:
             with self.boxes.saved_context():
                 self.boxes.moveTo(x, y)
                 c()
+
+        if self.color:
+            self.boxes.ctx.stroke()
+
         if self.is_part:
             self.boxes.ctx.new_part(self.is_part)
 
@@ -942,6 +976,9 @@ class Element:
                 )
             ],
         )
+
+def mark(s):
+    return DOWN_ARROW + s + DOWN_ARROW
 
 
 # @pytest.mark.parametrize(

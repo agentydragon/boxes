@@ -61,17 +61,8 @@ class DirectSlotEdge(BaseEdge):
 
 
 class TapeHolder2(RaiBase):
-    def _float_arg(self, name, **kwargs):
-        self.argparser.add_argument(
-            f"--{name}",
-            action="store",
-            type=float,
-            **kwargs,
-        )
-
     def __init__(self):
         super().__init__()
-
         self._float_arg("inner_width")
         self._float_arg("inner_diameter")
         self._float_arg("slot_diameter")
@@ -80,13 +71,6 @@ class TapeHolder2(RaiBase):
         self._float_arg("top")
         self._float_arg("opening")
         self._float_arg("slot_length")
-        self.argparser.add_argument(
-            "--preset",
-            action="store",
-            type=str,
-            default="",
-        )
-        self.addSettingsArgs(FingerJointSettings)
 
     def apply_presets(self):
         if not self.preset:

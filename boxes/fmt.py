@@ -19,6 +19,13 @@ def fmt_mm(x):
     return f"{fmt(x)}mm"
 
 
+MULTIPLICATION_SIGN = "×"
+
+
+def fmt_mmxmm(x, y):
+    return f"{fmt(x)}{MULTIPLICATION_SIGN}{fmt(y)}mm"
+
+
 def fmt_deg(x):
     return f"{fmt(x)}°"
 
@@ -27,3 +34,4 @@ def fmt_reldeg(x):
     if x == 0:
         return "0"
     return f"{fmt(x, show_sign=True)}°"
+

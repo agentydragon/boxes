@@ -794,6 +794,7 @@ class Element:
             bbox=self.bbox.shift(d),
             render=self.render,
             is_part=None,
+            color=self.color,
         )
 
     def do_render(self):
@@ -812,6 +813,7 @@ class Element:
                 c()
 
         if self.color:
+            # self.boxes.set_source_color == self.ctx.set_source_rgb
             self.boxes.ctx.stroke()
 
         if self.is_part:
@@ -845,17 +847,18 @@ class Element:
             render=[render],
             boxes=self.boxes,
             is_part=None,
+            color=None,  # handled by inner do_render
         )
 
     @classmethod
     def pack(cls, boxes, *elements: "Element") -> "Element":
         # Internal helper rectangle class.
+        @dataclasses.dataclass
         class _Rect:
-            def __init__(self, x, y, w, h):
-                self.x = x
-                self.y = y
-                self.w = w
-                self.h = h
+            x: float
+            y: float
+            w: float
+            h: float
 
             @property
             def right(self):
@@ -873,10 +876,8 @@ class Element:
                     or other.bottom <= self.y
                 )
 
-            def __repr__(self):
-                return f"_Rect({self.x}, {self.y}, {self.w}, {self.h})"
-
         # MaxRects bin-packing helper.
+        @dataclasses.dataclass
         class _MaxRectsBin:
             def __init__(self, width, height):
                 self.width = width

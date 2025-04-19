@@ -7,10 +7,13 @@ from boxes import Boxes, Color
 from math import sqrt
 from boxes.edges import FingerJointSettings, FingerJointEdge, FingerJointEdgeCounterPart, MountingSettings
 from boxes.edges import DoveTailSettings, DoveTailJoint, DoveTailJointCounterPart, FingerJointBase
+from boxes.fmt import (
+    fmt_mm,
+    fmt_mmxmm,
+)
 from boxes.generators.raibase import (
     PLAIN,
     Edge,
-    fmt_mm,
     Element,
     Plain,
     mark,
@@ -59,7 +62,9 @@ class GlazingFrame(RaiBase):
     """
 
     def __init__(self) -> None:
-        Boxes.__init__(self)
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        super().__init__()
         self.add_arguments()
 
     def add_arguments(self):
@@ -128,7 +133,7 @@ class GlazingFrame(RaiBase):
             "--content_h",
             action="store",
             type=float,
-            help="Width of content (backing / glass)",
+            help="Height of content (backing / glass)",
         )
         self.content_h: float
         self.argparser.add_argument(
@@ -150,13 +155,6 @@ class GlazingFrame(RaiBase):
             help="Number of glazing points along the height",
         )
         self.points_h: int
-        self.argparser.add_argument(
-            "--preset",
-            action="store",
-            type=str,
-            default="",
-        )
-        self.preset: str | None
 
         self.argparser.add_argument(
             "--dovetail_margin",
@@ -227,7 +225,7 @@ class GlazingFrame(RaiBase):
         if self.preset == "demo":
             self.window_w = 90
             self.window_h = 130
-            self.front_w = 10
+            self.front_w = 15
             self.front_t = 3.175  # 1/8"
             self.middle_t = 5
             self.content_w = 100
@@ -235,9 +233,9 @@ class GlazingFrame(RaiBase):
             self.content_t = 5
             self.points_w = 3
             self.points_h = 4
-            self.dovetail_margin = 2.0
+            self.dovetail_margin = 1.0
             self.middle_h = 6
-            self.front_middle_finger_margin = 5  # 2.0
+            self.front_middle_finger_margin = 7.5  # 2.0
         else:
             assert self.preset == ""
 
@@ -250,11 +248,13 @@ class GlazingFrame(RaiBase):
         ]
 
     def glass(self):
-        return Element.from_item(self.wall_builder("glass").add(self.content_rectangle_path()))
+        text = f"glass {fmt_mmxmm(self.content_w, self.content_h)}"
+        return Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()))
 
 
     def backing(self):
-        backing = Element.from_item(self.wall_builder("backing").add(self.content_rectangle_path()))
+        text = f"backing\ncontent {fmt_mmxmm(self.content_w, self.content_h)}\nwindow {fmt_mmxmm(self.window_w, self.window_h)}"
+        backing = Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()))
 
         w = self.wall_builder("backing_etching").add(
             Plain(self.window_w, text=mark("window_w")), Turn(90),
@@ -266,7 +266,6 @@ class GlazingFrame(RaiBase):
             (self.content_w - self.window_w) / 2,
             (self.content_h - self.window_h) / 2,
         )
-        print(f"{delta = }")
         etching = Element.from_item(w, color=Color.ETCHING).translate(delta)
         return Element.union(self, [backing, etching])
 
@@ -410,63 +409,21 @@ class GlazingFrame(RaiBase):
          - Possibly extra geometry for channel edges or a separate middle layer.
         """
 
-        print(f"Window: {fmt_mm(self.window_w)}x{fmt_mm(self.window_h)}")
+        print(f"Window: {fmt_mmxmm(self.window_w, self.window_h)}")
         print(f"Front frame: {fmt_mm(self.front_w)} around the window, {fmt_mm(self.front_t)} thick")
         print(f"Middle frame: {fmt_mm(self.middle_h)} deep, {fmt_mm(self.middle_t)} thick")
-        print(f"Content: {fmt_mm(self.content_w)}x{fmt_mm(self.content_h)}, {fmt_mm(self.content_t)} thick")
+        print(f"Content: {fmt_mmxmm(self.content_w, self.content_h)}, {fmt_mm(self.content_t)} thick")
 
         # TODO: apply: front_t, middle_t, points_w, points_h
 
 
         # Render the backing
         return self.ystack(
-            #self.glass(),
-            #self.backing(),
-            self.front_frame(),
-            self.middle_frame(),
+            #self.xstack(self.glass(), self.backing()),
+            self.backing(),
+            #self.front_frame(),
+            #self.middle_frame(),
         )
 
         # TODO: front frame pieces
         # TODO: back frame pieces
-
-
-
-
-        """
-        # Calculate outer dims for the front window
-        front_w = self.x + 2 * self.overlap if self.glass_w == 0 else self.glass_w + 2 * self.overlap
-        front_h = self.y + 2 * self.overlap if self.glass_h == 0 else self.glass_h + 2 * self.overlap
-
-        label_front = f"Front Frame {front_w:.1f}x{front_h:.1f}"
-        self.rectangularWall(front_w, front_h, edges="eeee", label=label_front, move="right")
-
-        # Backing piece: just the same outer dimension as the photo for demonstration
-        label_back = f"Backing {self.x:.1f} x {self.y:.1f}"
-        self.rectangularWall(self.x, self.y, edges="eeee", label=label_back, move="down")
-
-        # We'll now create a partial channel layer to hold the glass.
-        # Then we'll add notches to the backing for glazing points.
-        channel_height = self.thickness * 2
-        frame_x = front_w - 2*self.thickness
-        label_channel = f"Glass Channel {frame_x:.1f} x {channel_height:.1f}"
-        self.rectangularWall(frame_x, channel_height, edges="eeee", label=label_channel, move="down")
-
-        # Now let's add notches on the backing for the glazing points
-        notch_width = 5
-        notch_depth = self.thickness + 1.0
-        for side in ('top','bottom','left','right'):
-            if side in ('top','bottom'):
-                step = self.x / (self.glazing_points + 1)
-                sign = 1 if side == 'top' else -1
-                y_val = (self.y / 2.0) * sign
-                for i in range(self.glazing_points):
-                    x_val = -(self.x / 2.0) + step * (i + 1)
-                    self.rectangularHole(x_val, y_val, notch_width, notch_depth, center_x=True, center_y=True)
-            else:
-                step = self.y / (self.glazing_points + 1)
-                sign = 1 if side == 'right' else -1
-                x_val = (self.x / 2.0) * sign
-                for i in range(self.glazing_points):
-                    y_val = -(self.y / 2.0) + step * (i + 1)
-                    self.rectangularHole(x_val, y_val, notch_depth, notch_width, center_x=True, center_y=True)
-        """

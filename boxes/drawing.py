@@ -176,7 +176,7 @@ class Part:
         p = Path(self.path, params)
         self.pathes.append(p)
         self.path = []
-        print("stroke(): flush path 2")
+        self.logger.info("stroke(): flush path 2")
         return p
 
     def move_to(self, *xy):
@@ -316,7 +316,13 @@ class Context:
     def set_line_width(self, lw):
         self._lw = lw
 
+    @property
+    @lru_cache()
+    def logger(self):
+        return logging.getLogger(f"Context:{id(self)}")
+
     def set_source_rgb(self, r, g, b):
+        self.logger.info(f"set_source_rgb({r=} {g=} {b=})")
         check_coordinates(r, g, b)
         self._rgb = (r, g, b)
 

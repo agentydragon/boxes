@@ -12,7 +12,6 @@ from boxes.fmt import (
     fmt_mmxmm,
 )
 from boxes.generators.raibase import (
-    PLAIN,
     Edge,
     Element,
     Plain,
@@ -20,8 +19,6 @@ from boxes.generators.raibase import (
     RaiBase,
     Close,
     Turn,
-    FINGER,
-    FINGER_COUNTER,
     coord,
     inject_shortcuts,
     BBox,
@@ -33,6 +30,10 @@ MIDDLE_MIDDLE_FINGER = 'b'
 MIDDLE_MIDDLE_FINGER_COUNTER = 'B'
 MIDDLE_TO_FRONT_FINGER = 'c'
 FRONT_TO_MIDDLE_FINGER_COUNTER = 'C'
+
+VGROOVE_COLOR = (128, 0, 128)
+GLASS_COLOR = (0, 128, 128)
+MIDDLE_FRAME_COLOR = (0, 0, 255)
 
 class FingerJointEdgeCounterPartOverride(FingerJointEdgeCounterPart):
     def __init__(self, boxes, settings, finger_length_thickness_override: float):
@@ -96,12 +97,12 @@ class GlazingFrame(RaiBase):
         )
         self.window_h: float
         self.argparser.add_argument(
-            "--front_w",
+            "--front_frame_border",
             action="store",
             type=float,
             help="Width of front frame in mm"
         )
-        self.front_w: float
+        self.front_frame_border: float
         self.argparser.add_argument(
             "--front_t",
             action="store",
@@ -176,10 +177,10 @@ class GlazingFrame(RaiBase):
     @property
     def shortcuts(self):
         return dict(
-            front_w=self.front_w,
+            front_frame_border=self.front_frame_border,
             middle_h=self.middle_h,
-            front_frame_w=self.window_w + 2 * self.front_w,
-            front_frame_h=self.window_h + 2 * self.front_w,
+            front_frame_w=self.window_w + 2 * self.front_frame_border,
+            front_frame_h=self.window_h + 2 * self.front_frame_border,
         )
 
 
@@ -225,7 +226,7 @@ class GlazingFrame(RaiBase):
         if self.preset == "demo":
             self.window_w = 90
             self.window_h = 130
-            self.front_w = 15
+            self.front_frame_border = 15
             self.front_t = 3.175  # 1/8"
             self.middle_t = 5
             self.content_w = 100
@@ -249,7 +250,7 @@ class GlazingFrame(RaiBase):
 
     def glass(self):
         text = f"glass {fmt_mmxmm(self.content_w, self.content_h)}"
-        return Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()))
+        return Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()), color=GLASS_COLOR)
 
 
     def backing(self):
@@ -270,9 +271,9 @@ class GlazingFrame(RaiBase):
         return Element.union(self, [backing, etching])
 
     @inject_shortcuts
-    def front_frame(self, front_w, front_frame_w, front_frame_h):
+    def front_frame(self, front_frame_border, front_frame_w, front_frame_h):
         # copied from split PhotoFrame.split front
-        hypo = sqrt(2 * front_w**2)
+        hypo = sqrt(2 * front_frame_border**2)
         dm = Plain(self.dovetail_margin)
         dove = hypo - 2 * self.dovetail_margin
         assert dove >= 0
@@ -327,7 +328,7 @@ class GlazingFrame(RaiBase):
             render=[render],
             boxes=self,
             is_part=None,
-            color=Color.ETCHING, # TODO
+            color=VGROOVE_COLOR,
         )
 
     def make_grooves(self, length, count):
@@ -360,7 +361,8 @@ class GlazingFrame(RaiBase):
                 Edge(middle_h, MIDDLE_MIDDLE_FINGER), Turn(90),
                 Plain(front_frame_w - self.middle_t), Turn(90),
                 Edge(middle_h, MIDDLE_MIDDLE_FINGER_COUNTER), #Close()
-            )
+            ),
+            color=MIDDLE_FRAME_COLOR,
         )
         groove_offset = coord(0, self.content_t)
         top_bottom = Element.union(self, [
@@ -368,7 +370,7 @@ class GlazingFrame(RaiBase):
             self.make_grooves(front_frame_w, self.points_w).translate(groove_offset)
         ])
         side = Element.from_item(
-            self.wall_builder("middle frame sides").add(
+            self.wall_builder("middle frame left/right").add(
                 Plain(self.middle_t),
                 r,
                 Edge(front_frame_h - 2 * (self.front_middle_finger_margin), frame_edge),
@@ -377,7 +379,8 @@ class GlazingFrame(RaiBase):
                 Edge(middle_h, MIDDLE_MIDDLE_FINGER), Turn(90),
                 Plain(front_frame_h - self.middle_t), Turn(90),
                 Edge(middle_h, MIDDLE_MIDDLE_FINGER_COUNTER),# Close()
-            )
+            ),
+            color=MIDDLE_FRAME_COLOR,
         )
         side = Element.union(self, [
             side,
@@ -410,7 +413,7 @@ class GlazingFrame(RaiBase):
         """
 
         print(f"Window: {fmt_mmxmm(self.window_w, self.window_h)}")
-        print(f"Front frame: {fmt_mm(self.front_w)} around the window, {fmt_mm(self.front_t)} thick")
+        print(f"Front frame: {fmt_mm(self.front_frame_border)} border around the window, {fmt_mm(self.front_t)} thick")
         print(f"Middle frame: {fmt_mm(self.middle_h)} deep, {fmt_mm(self.middle_t)} thick")
         print(f"Content: {fmt_mmxmm(self.content_w, self.content_h)}, {fmt_mm(self.content_t)} thick")
 
@@ -419,10 +422,9 @@ class GlazingFrame(RaiBase):
 
         # Render the backing
         return self.ystack(
-            #self.xstack(self.glass(), self.backing()),
-            self.backing(),
-            #self.front_frame(),
-            #self.middle_frame(),
+            self.xstack(self.glass(), self.backing()),
+            self.front_frame(),
+            self.middle_frame(),
         )
 
         # TODO: front frame pieces

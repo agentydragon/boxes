@@ -805,6 +805,7 @@ class Element:
 
         if self.color:
             self.boxes.ctx.stroke()
+            self.boxes.ctx.save()
             self.boxes.set_source_color(self.color)
 
         for c in self.render:
@@ -815,6 +816,7 @@ class Element:
         if self.color:
             # self.boxes.set_source_color == self.ctx.set_source_rgb
             self.boxes.ctx.stroke()
+            self.boxes.ctx.restore()  # restore color
 
         if self.is_part:
             self.boxes.ctx.new_part(self.is_part)

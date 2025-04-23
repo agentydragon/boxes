@@ -3,8 +3,8 @@ To run:
     scripts/boxes GlazingFrame --preset=demo
 """
 
-from boxes import Boxes, Color
-from math import sqrt
+from boxes import Color
+from math import sqrt, ceil
 from boxes.edges import FingerJointSettings, FingerJointEdge, FingerJointEdgeCounterPart, MountingSettings
 from boxes.edges import DoveTailSettings, DoveTailJoint, DoveTailJointCounterPart, FingerJointBase
 from boxes.fmt import (
@@ -34,6 +34,7 @@ FRONT_TO_MIDDLE_FINGER_COUNTER = 'C'
 VGROOVE_COLOR = (128, 0, 128)
 GLASS_COLOR = (0, 128, 128)
 MIDDLE_FRAME_COLOR = (0, 0, 255)
+PILOT_LINE_COLOR = (32, 32, 32)
 
 class FingerJointEdgeCounterPartOverride(FingerJointEdgeCounterPart):
     def __init__(self, boxes, settings, finger_length_thickness_override: float):
@@ -116,46 +117,32 @@ class GlazingFrame(RaiBase):
             type=float,
             help="Thickness of material for middle frame"
         )
-        self.argparser.add_argument(
-            "--middle_h",
-            action="store",
-            type=float,
-            help="Height of middle frame"
-        )
-        self.middle_h: float
-        self.argparser.add_argument(
-            "--content_w",
-            action="store",
-            type=float,
-            help="Width of content (backing / glass)",
-        )
-        self.content_w: float
-        self.argparser.add_argument(
-            "--content_h",
-            action="store",
-            type=float,
-            help="Height of content (backing / glass)",
-        )
-        self.content_h: float
+        # self.argparser.add_argument(
+        #     "--middle_h",
+        #     action="store",
+        #     type=float,
+        #     help="Height of middle frame"
+        # )
+        # self.middle_h: float
         self.argparser.add_argument(
             "--content_t",
             action="store",
             type=float,
             help="Combined thickness of the content (backing + picture + glass)",
         )
-        self.argparser.add_argument(
-            "--points_w",
-            action="store",
-            type=int,
-            help="Number of glazing points along the width",
-        )
-        self.argparser.add_argument(
-            "--points_h",
-            action="store",
-            type=int,
-            help="Number of glazing points along the height",
-        )
-        self.points_h: int
+        #self.argparser.add_argument(
+        #    "--points_w",
+        #    action="store",
+        #    type=int,
+        #    help="Number of glazing points along the width",
+        #)
+        #self.argparser.add_argument(
+        #    "--points_h",
+        #    action="store",
+        #    type=int,
+        #    help="Number of glazing points along the height",
+        #)
+        #self.points_h: int
 
         self.argparser.add_argument(
             "--dovetail_margin",
@@ -176,11 +163,20 @@ class GlazingFrame(RaiBase):
 
     @property
     def shortcuts(self):
+        front_frame_w = self.window_w + 2 * self.front_frame_border
+        front_frame_h = self.window_h + 2 * self.front_frame_border
+        glazing_point_thickness = 3.2
+        above_centerline = 0.5
+        # actual glazing point wing thickness: 3.2 mm
+        middle_h = self.content_t + glazing_point_thickness + above_centerline
         return dict(
             front_frame_border=self.front_frame_border,
-            middle_h=self.middle_h,
-            front_frame_w=self.window_w + 2 * self.front_frame_border,
-            front_frame_h=self.window_h + 2 * self.front_frame_border,
+            middle_h=middle_h,
+            front_frame_w=front_frame_w,
+            front_frame_h=front_frame_h,
+            content_w=front_frame_w - 2 * self.middle_t,
+            content_h=front_frame_h - 2 * self.middle_t,
+            above_centerline=above_centerline,
         )
 
 
@@ -201,6 +197,9 @@ class GlazingFrame(RaiBase):
             thickness=self.middle_t,
             relative=True,
             **self.edgesettings.get("FingerJoint", {}),
+
+            # add 0.2 mm for burn marks on fingers
+            extra_length=(0.2 / self.middle_t),
         )
         self.edges[MIDDLE_MIDDLE_FINGER] = FingerJointEdge(self, middle_middle_finger_settings)
         self.edges[MIDDLE_MIDDLE_FINGER_COUNTER] = FingerJointEdgeCounterPart(self, middle_middle_finger_settings)
@@ -211,6 +210,16 @@ class GlazingFrame(RaiBase):
             relative=True,
             **self.edgesettings.get("FingerJoint", {}),
             surroundingspaces=0,  # We handle this ourselves.
+
+            # add 0.2 mm for burn marks on fingers
+            # TODO: make parametric
+            extra_length=(0.2 / self.front_t),
+
+            # xxx: default: space=2, finger=2
+            # "finger" will be part of side frame appearing on front frame.
+            # if smaller -> less sanding of burn marks
+            space=self.front_middle_fingerjoint_space,
+            finger=self.front_middle_fingerjoint_finger,
         )
         # Fingers from middle to front: pretend to use front thickness,
         # even if it's on middle material.
@@ -223,38 +232,103 @@ class GlazingFrame(RaiBase):
 
 
     def apply_preset(self):
-        if self.preset == "demo":
+        if self.preset == "mongrelist-crying":
+            # "mongrelist crying" pic: 22.7x30.5 cm
+            self.window_w, self.window_h = 227, 305
+
+            acrylite_t = 2.94
+            thin_ply_t = 3.0
+
+            self.front_frame_border = 22 # "10% of short edge" = "classic no-mat proportion"
+            self.front_t = thin_ply_t  # 1/8"
+            self.middle_t = 5.17
+            self.content_t = acrylite_t + thin_ply_t
+
+            # self.points_w = self.points_h = 3
+            self.dovetail_margin = 1
+            self.front_middle_finger_margin = 15
+
+            self.front_middle_fingerjoint_space = 2
+            self.front_middle_fingerjoint_finger = 2
+            #self.front_middle_fingerjoint_space = 12
+            #self.front_middle_fingerjoint_finger = 6
+        elif self.preset == "memento-mori":
+            # "memento mori / memento vire" pics: 28x43 cm
+            self.window_w, self.window_h = 280, 430
+
+            acrylite_t = 2.94
+            thin_ply_t = 3.0
+
+            self.front_frame_border = 22
+            self.front_t = thin_ply_t  # 1/8"
+            self.middle_t = 6.34
+            self.content_t = acrylite_t + thin_ply_t
+
+            #self.points_w = self.points_h = 3
+            self.dovetail_margin = 1
+            self.front_middle_finger_margin = 15
+
+            self.front_middle_fingerjoint_space = 12
+            self.front_middle_fingerjoint_finger = 6
+        elif self.preset == "run":
+            # run test: 20x20 mm window
+            self.window_w, self.window_h = 30, 20
+
+            self.front_frame_border = 15
+            self.front_t = 3.175  # 1/8"
+            self.middle_t = 6.34
+
+            acrylite_t = 2.94
+            thin_ply_t = 3.25
+
+            self.content_t = acrylite_t + thin_ply_t
+
+            #self.points_w = self.points_h = 2
+            self.dovetail_margin = 1
+            #self.middle_h = 7.5
+            self.front_middle_finger_margin = 10
+            self.burn = 0
+
+            # default
+            self.front_middle_fingerjoint_space = 2
+            self.front_middle_fingerjoint_finger = 2
+        elif self.preset == "demo":
+            self.burn = 0
             self.window_w = 90
             self.window_h = 130
             self.front_frame_border = 15
             self.front_t = 3.175  # 1/8"
             self.middle_t = 5
-            self.content_w = 100
-            self.content_h = 140
             self.content_t = 5
-            self.points_w = 3
-            self.points_h = 4
+            # self.points_w, self.points_h = 3, 4
             self.dovetail_margin = 1.0
-            self.middle_h = 6
+            #self.middle_h = 6
             self.front_middle_finger_margin = 7.5  # 2.0
+
+            # default
+            self.front_middle_fingerjoint_space = 2
+            self.front_middle_fingerjoint_finger = 2
         else:
             assert self.preset == ""
 
-    def content_rectangle_path(self):
+    @inject_shortcuts
+    def content_rectangle_path(self, content_w, content_h):
         return [
-            Plain(self.content_w, text=mark("content_w")), Turn(90),
-            Plain(self.content_h, text=mark("content_h")), Turn(90),
-            Plain(self.content_w), Turn(90),
-            Plain(self.content_h), Close()
+            Plain(content_w, text=mark("content_w")), Turn(90),
+            Plain(content_h, text=mark("content_h")), Turn(90),
+            Plain(content_w), Turn(90),
+            Plain(content_h), Close()
         ]
 
-    def glass(self):
-        text = f"glass {fmt_mmxmm(self.content_w, self.content_h)}"
+    @inject_shortcuts
+    def glass(self, content_w, content_h):
+        text = f"glass {fmt_mmxmm(content_w, content_h)}"
         return Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()), color=GLASS_COLOR)
 
 
-    def backing(self):
-        text = f"backing\ncontent {fmt_mmxmm(self.content_w, self.content_h)}\nwindow {fmt_mmxmm(self.window_w, self.window_h)}"
+    @inject_shortcuts
+    def backing(self, content_w, content_h):
+        text = f"backing\ncontent {fmt_mmxmm(content_w, content_h)}\nwindow {fmt_mmxmm(self.window_w, self.window_h)}"
         backing = Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()))
 
         w = self.wall_builder("backing_etching").add(
@@ -264,8 +338,8 @@ class GlazingFrame(RaiBase):
             Plain(self.window_h), Close()
         )
         delta = coord(
-            (self.content_w - self.window_w) / 2,
-            (self.content_h - self.window_h) / 2,
+            (content_w - self.window_w) / 2,
+            (content_h - self.window_h) / 2,
         )
         etching = Element.from_item(w, color=Color.ETCHING).translate(delta)
         return Element.union(self, [backing, etching])
@@ -313,6 +387,20 @@ class GlazingFrame(RaiBase):
             side, side,
         )
 
+    def pilot_line(self, size=10):
+        def render():
+            self.moveTo(-size/2, 0, 0)
+            self.edge(size)
+
+        return Element(
+            position=coord(0, 0),
+            bbox=BBox(minx=-size/2, maxx=size/2, miny=0, maxy=0),
+            render=[render],
+            boxes=self,
+            is_part=None,
+            #color=PILOT_LINE_COLOR,
+        )
+
     def v_groove(self, size=2):
         len = sqrt(2) * size
 
@@ -331,13 +419,39 @@ class GlazingFrame(RaiBase):
             color=VGROOVE_COLOR,
         )
 
-    def make_grooves(self, length, count):
+    # uniform
+    # @inject_shortcuts
+    # def make_grooves(self, length, count, above_centerline):
+    #     return Element.union(self, [
+    #         Element.union(self,
+    #                       [self.v_groove(), self.pilot_line()])
+    #         .translate(
+    #             coord((length / (count + 1)) * i, above_centerline)
+    #         )
+    #         for i in range(1, count + 1)
+    #     ])
+
+    @inject_shortcuts
+    def make_grooves(self, length, above_centerline,
+                     edge_clearance=25, max_spacing=120):
+        """
+        Place glazing‑point grooves:
+          ▸ fixed clearance `edge_clearance` from both ends (default 25 mm)
+          ▸ no clear span > `max_spacing` (default 120 mm)
+          ▸ points distributed evenly in the remaining span
+        """
+
+        usable = max(0, length - 2*edge_clearance)          # interior span
+        n      = max(1, ceil(usable / max_spacing))    # points per side
+        step   = usable / (n + 1)                           # even spacing
+
         return Element.union(self, [
-            self.v_groove(2).translate(
-                coord((length / (count + 1)) * i, 0)
-            )
-            for i in range(1, count + 1)
+            Element.union(self, [self.v_groove(), self.pilot_line()])
+                   .translate(coord(edge_clearance + step*i, above_centerline))
+            for i in range(1, n + 1)
         ])
+
+
 
     @inject_shortcuts
     def middle_frame(self, front_frame_w, front_frame_h, middle_h):
@@ -349,7 +463,7 @@ class GlazingFrame(RaiBase):
 
         # override fingerLength on fingerJointBase?
 
-        assert self.front_middle_finger_margin >= self.middle_t, f"Need to keep enough free space without fingers for a full thickness"
+        assert self.front_middle_finger_margin >= self.middle_t, f"Need to keep enough free space without fingers (front_middle_finger_margin={fmt_mm(self.front_middle_finger_margin)}) for a full thickness (middle_t={fmt_mm(self.middle_t)})"
         r = Plain(self.front_middle_finger_margin - self.middle_t)
         top_bottom = Element.from_item(
             self.wall_builder("middle frame top/bottom").add(
@@ -367,7 +481,8 @@ class GlazingFrame(RaiBase):
         groove_offset = coord(0, self.content_t)
         top_bottom = Element.union(self, [
             top_bottom,
-            self.make_grooves(front_frame_w, self.points_w).translate(groove_offset)
+            #self.make_grooves(front_frame_w, self.points_w).translate(groove_offset)
+            self.make_grooves(front_frame_w).translate(groove_offset)
         ])
         side = Element.from_item(
             self.wall_builder("middle frame left/right").add(
@@ -384,15 +499,16 @@ class GlazingFrame(RaiBase):
         )
         side = Element.union(self, [
             side,
-            self.make_grooves(front_frame_h, self.points_h).translate(groove_offset)
+            # self.make_grooves(front_frame_h, self.points_h).translate(groove_offset)
+             self.make_grooves(front_frame_h).translate(groove_offset)
         ])
 
-        # check there's enough margin above content for glazing points
-        remaining = self.middle_h - self.content_t
+        #### check there's enough margin above content for glazing points
+        ###remaining = self.middle_h - self.content_t
 
-        # by https://www.hardwareworld.com/p10k82f/Glazing-Push-Points
-        # they actually claim 0.375 mm
-        assert remaining >= 1.0, f"Only {fmt_mm(remaining)} left for glazing point wings - make the middle frame higher"
+        #### by https://www.hardwareworld.com/p10k82f/Glazing-Push-Points
+        #### they actually claim 0.375 mm
+        ###assert remaining >= 1.0, f"Only {fmt_mm(remaining)} left for glazing point wings - make the middle frame higher"
 
         assert self.middle_t >= 3, f"Need enough middle thickness for 2.85 mm bite from glazing point"
         # TODO: chatgpt recommends <= 4mm
@@ -404,7 +520,8 @@ class GlazingFrame(RaiBase):
             top_bottom,
         )
 
-    def build(self):
+    @inject_shortcuts
+    def build(self, content_w, content_h, middle_h):
         """
         Render the frame parts:
          - The front frame layer or 'picture window'.
@@ -414,8 +531,8 @@ class GlazingFrame(RaiBase):
 
         print(f"Window: {fmt_mmxmm(self.window_w, self.window_h)}")
         print(f"Front frame: {fmt_mm(self.front_frame_border)} border around the window, {fmt_mm(self.front_t)} thick")
-        print(f"Middle frame: {fmt_mm(self.middle_h)} deep, {fmt_mm(self.middle_t)} thick")
-        print(f"Content: {fmt_mmxmm(self.content_w, self.content_h)}, {fmt_mm(self.content_t)} thick")
+        print(f"Middle frame: {fmt_mm(middle_h)} deep, {fmt_mm(self.middle_t)} thick")
+        print(f"Content: {fmt_mmxmm(content_w, content_h)}, {fmt_mm(self.content_t)} thick")
 
         # TODO: apply: front_t, middle_t, points_w, points_h
 

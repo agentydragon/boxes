@@ -26,6 +26,7 @@ PLAIN = "e"
 DEG_SIGN = "°"
 ALPHA_SIGN = "α"
 DOWN_ARROW = "↓"
+FINGER_HOLE_EDGE = 'h'
 FINGER = "f"
 FINGER_COUNTER = "F"
 
@@ -147,7 +148,7 @@ def inject_shortcuts(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         # 1) Grab shortcuts (dict) from self
-        shortcuts = getattr(self, "shortcuts", {})
+        shortcuts = self.shortcuts
         if not isinstance(shortcuts, dict):
             raise TypeError("self.shortcuts must be a dict for @inject_shortcuts")
 
@@ -161,17 +162,20 @@ def inject_shortcuts(func):
             if p.name in shortcuts:
                 arg_map[p.name] = shortcuts[p.name]
 
-        # 4) We now assign the user's *positional* arguments to the
-        #    still-unfilled parameters in order
-        unfilled_params = [p for p in parameters if p.name not in arg_map]
+        # 4) Assign positional arguments only to parameters that accept them
+        positional_params = [
+            p for p in parameters
+            if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            and p.name not in arg_map
+        ]
         pos_args = list(args)
-        if len(pos_args) > len(unfilled_params):
+        if len(pos_args) > len(positional_params):
             raise TypeError(
                 f"{func.__name__}() got {len(pos_args)} positional args, "
-                f"but only {len(unfilled_params)} available after injection"
+                f"but only {len(positional_params)} available after injection"
             )
         for i, val in enumerate(pos_args):
-            p = unfilled_params[i]
+            p = positional_params[i]
             arg_map[p.name] = val
 
         # 5) Apply kwargs, checking for conflicts
@@ -182,25 +186,43 @@ def inject_shortcuts(func):
                 )
             arg_map[k] = v
 
-        # 6) Now assemble the final call-args in the correct order
-        final_args = []
+        # 6) Build final argument lists for positional and keyword-only parameters
+        call_pos_args: list = []
+        call_kw_args: dict = {}
         for p in sig.parameters.values():
             if p.name == "self":
-                final_args.append(self)
                 continue
-
-            if p.name in arg_map:
-                final_args.append(arg_map[p.name])
-            else:
-                # If missing but has a default, use it. Otherwise error.
-                if p.default is not inspect.Parameter.empty:
-                    final_args.append(p.default)
+            if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+                if p.name in arg_map:
+                    call_pos_args.append(arg_map[p.name])
+                elif p.default is not inspect.Parameter.empty:
+                    call_pos_args.append(p.default)
                 else:
                     raise TypeError(
-                        f"{func.__name__}() missing required argument: '{p.name}'"
+                        f"{func.__name__}() missing required argument: '{p.name}'. {arg_map = }, {args=}, {kwargs=}, {shortcuts=}"
                     )
+            elif p.kind == inspect.Parameter.KEYWORD_ONLY:
+                if p.name in arg_map:
+                    call_kw_args[p.name] = arg_map[p.name]
+                elif p.default is not inspect.Parameter.empty:
+                    call_kw_args[p.name] = p.default
+                else:
+                    raise TypeError(
+                        f"{func.__name__}() missing required argument: '{p.name}'. {arg_map = }, {args=}, {kwargs=}, {shortcuts=}"
+                    )
+            elif p.kind == inspect.Parameter.VAR_POSITIONAL:
+                # Skip var positional parameters
+                continue
+            elif p.kind == inspect.Parameter.VAR_KEYWORD:
+                # Include any extra kwargs
+                extra_keys = set(arg_map.keys()) - {
+                    q.name for q in sig.parameters.values() if q.name != "self"
+                }
+                for k in extra_keys:
+                    call_kw_args[k] = arg_map[k]
+            # Other kinds are not expected
 
-        return func(*final_args)
+        return func(self, *call_pos_args, **call_kw_args)
 
     return wrapper
 
@@ -685,7 +707,6 @@ class WallBuilder:
                 raise ValueError(f"Unsupported {c = }")
 
             if self.debug:
-                # if self.debug:
                 color = random_color()
                 x, y = position.astype(float)
                 # make the angle always upright
@@ -1027,6 +1048,41 @@ def test_too_many_pos_args():
     box = TestBox()
     with pytest.raises(TypeError, match="got 4 positional"):
         box.fn(1, 2, 3, 4)
+
+# Tests for keyword-only parameters with @inject_shortcuts
+class TestInjectKeywordOnly:
+    @property
+    def shortcuts(self):
+        # Shortcut for keyword-only parameter 'b'
+        return {"b": "shortcut_b"}
+
+    @inject_shortcuts
+    def fn(self, a, *, b, c="default_c"):
+        return f"a={a},b={b},c={c}"
+
+def test_keyword_only_injection_and_defaults():
+    box = TestInjectKeywordOnly()
+    # 'a' supplied positionally, 'b' injected, 'c' default
+    result = box.fn("pos_a")
+    assert_that(result, equal_to("a=pos_a,b=shortcut_b,c=default_c"))
+
+def test_keyword_only_override_c_with_kwarg():
+    box = TestInjectKeywordOnly()
+    # override keyword-only 'c'
+    result = box.fn("pos_a", c="override_c")
+    assert_that(result, equal_to("a=pos_a,b=shortcut_b,c=override_c"))
+
+def test_keyword_only_positional_error_for_b():
+    box = TestInjectKeywordOnly()
+    # cannot supply 'b' positionally; only 'a' is positional
+    with pytest.raises(TypeError, match="got 2 positional"):
+        box.fn("pos_a", "bad_b")
+
+def test_keyword_only_missing_required_a():
+    box = TestInjectKeywordOnly()
+    # missing required positional 'a'
+    with pytest.raises(TypeError, match="missing required argument: 'a'"):
+        box.fn()
 
 
 from pathlib import Path

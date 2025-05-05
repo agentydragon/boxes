@@ -444,7 +444,8 @@ class Boxes:
             self.ctx.set_line_width(0.01)
             self.set_source_color(Color.BLUE)
         else:
-            self.ctx.set_line_width(max(2 * self.burn, 0.05))
+            #self.ctx.set_line_width(max(2 * self.burn, 0.05))
+            self.ctx.set_line_width(0.2)
             self.set_source_color(Color.BLACK)
 
         self.spacing = 2 * self.burn + 0.5 * self.thickness

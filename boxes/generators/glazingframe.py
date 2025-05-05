@@ -3,6 +3,7 @@ To run:
     scripts/boxes GlazingFrame --preset=demo
 """
 
+import logging
 from boxes import Color
 from math import sqrt, ceil
 from boxes.edges import FingerJointSettings, FingerJointEdge, FingerJointEdgeCounterPart, MountingSettings
@@ -34,7 +35,7 @@ FRONT_TO_MIDDLE_FINGER_COUNTER = 'C'
 VGROOVE_COLOR = (128, 0, 128)
 GLASS_COLOR = (0, 128, 128)
 MIDDLE_FRAME_COLOR = (0, 0, 255)
-PILOT_LINE_COLOR = (32, 32, 32)
+PILOT_LINE_COLOR = (200, 200, 200)
 
 class FingerJointEdgeCounterPartOverride(FingerJointEdgeCounterPart):
     def __init__(self, boxes, settings, finger_length_thickness_override: float):
@@ -64,7 +65,6 @@ class GlazingFrame(RaiBase):
     """
 
     def __init__(self) -> None:
-        import logging
         logging.basicConfig(level=logging.INFO)
         super().__init__()
         self.add_arguments()
@@ -160,6 +160,8 @@ class GlazingFrame(RaiBase):
         self.front_middle_finger_margin: float
         self.addSettingsArgs(DoveTailSettings, size=2.0, depth=1.0)
 
+        self.middle_sand_correction = 0.72  # empirically to make 6mm birch look good
+
 
     @property
     def shortcuts(self):
@@ -169,13 +171,16 @@ class GlazingFrame(RaiBase):
         above_centerline = 0.5
         # actual glazing point wing thickness: 3.2 mm
         middle_h = self.content_t + glazing_point_thickness + above_centerline
+        content_w, content_h = front_frame_w - 2 * self.middle_t, front_frame_h - 2 * self.middle_t
+        assert content_w >= self.art_w
+        assert content_h >= self.art_h
         return dict(
             front_frame_border=self.front_frame_border,
             middle_h=middle_h,
             front_frame_w=front_frame_w,
             front_frame_h=front_frame_h,
-            content_w=front_frame_w - 2 * self.middle_t,
-            content_h=front_frame_h - 2 * self.middle_t,
+            content_w=content_w,
+            content_h=content_h,
             above_centerline=above_centerline,
         )
 
@@ -199,7 +204,7 @@ class GlazingFrame(RaiBase):
             **self.edgesettings.get("FingerJoint", {}),
 
             # add 0.2 mm for burn marks on fingers
-            extra_length=(0.2 / self.middle_t),
+            extra_length=(self.middle_sand_correction / self.middle_t),
         )
         self.edges[MIDDLE_MIDDLE_FINGER] = FingerJointEdge(self, middle_middle_finger_settings)
         self.edges[MIDDLE_MIDDLE_FINGER_COUNTER] = FingerJointEdgeCounterPart(self, middle_middle_finger_settings)
@@ -213,7 +218,7 @@ class GlazingFrame(RaiBase):
 
             # add 0.2 mm for burn marks on fingers
             # TODO: make parametric
-            extra_length=(0.2 / self.front_t),
+            extra_length=(self.middle_sand_correction / self.front_t),
 
             # xxx: default: space=2, finger=2
             # "finger" will be part of side frame appearing on front frame.
@@ -232,17 +237,41 @@ class GlazingFrame(RaiBase):
 
 
     def apply_preset(self):
-        if self.preset == "mongrelist-crying":
+        ACRYLITE_T = 2.94
+
+        if self.preset == "gold-mongrelist":
+            # "gold mongrelist" pic: 27.8 x 43.2 cm
+            # minus 3mm on all sides for buffer
+            self.art_w, self.art_h = 278, 432
+            self.window_w, self.window_h = self.art_w - 6, self.art_h - 6
+
+            thin_ply_t = 3.0
+
+            # TODO: deeper groove
+
+            self.front_frame_border = 19
+            self.front_t = thin_ply_t
+            self.middle_t = 6
+            self.content_t = ACRYLITE_T + thin_ply_t
+
+            # self.points_w = self.points_h = 3
+            self.dovetail_margin_outer = 2.5
+            self.dovetail_margin_inner = 0
+            self.front_middle_finger_margin = 15
+
+            self.front_middle_fingerjoint_space = 2
+            self.front_middle_fingerjoint_finger = 2
+        elif self.preset == "mongrelist-crying":
             # "mongrelist crying" pic: 22.7x30.5 cm
             self.window_w, self.window_h = 227, 305
+            self.art_w, self.art_h = self.window_w, self.window_h
 
-            acrylite_t = 2.94
             thin_ply_t = 3.0
 
             self.front_frame_border = 22 # "10% of short edge" = "classic no-mat proportion"
             self.front_t = thin_ply_t  # 1/8"
             self.middle_t = 5.17
-            self.content_t = acrylite_t + thin_ply_t
+            self.content_t = ACRYLITE_T + thin_ply_t
 
             # self.points_w = self.points_h = 3
             self.dovetail_margin = 1
@@ -255,14 +284,14 @@ class GlazingFrame(RaiBase):
         elif self.preset == "memento-mori":
             # "memento mori / memento vire" pics: 28x43 cm
             self.window_w, self.window_h = 280, 430
+            self.art_w, self.art_h = self.window_w, self.window_h
 
-            acrylite_t = 2.94
             thin_ply_t = 3.0
 
             self.front_frame_border = 22
             self.front_t = thin_ply_t  # 1/8"
             self.middle_t = 6.34
-            self.content_t = acrylite_t + thin_ply_t
+            self.content_t = ACRYLITE_T + thin_ply_t
 
             #self.points_w = self.points_h = 3
             self.dovetail_margin = 1
@@ -273,15 +302,15 @@ class GlazingFrame(RaiBase):
         elif self.preset == "run":
             # run test: 20x20 mm window
             self.window_w, self.window_h = 30, 20
+            self.art_w, self.art_h = self.window_w, self.window_h
 
             self.front_frame_border = 15
             self.front_t = 3.175  # 1/8"
             self.middle_t = 6.34
 
-            acrylite_t = 2.94
             thin_ply_t = 3.25
 
-            self.content_t = acrylite_t + thin_ply_t
+            self.content_t = ACRYLITE_T + thin_ply_t
 
             #self.points_w = self.points_h = 2
             self.dovetail_margin = 1
@@ -294,8 +323,8 @@ class GlazingFrame(RaiBase):
             self.front_middle_fingerjoint_finger = 2
         elif self.preset == "demo":
             self.burn = 0
-            self.window_w = 90
-            self.window_h = 130
+            self.window_w, self.window_h = 90, 130
+            self.art_w, self.art_h = self.window_w, self.window_h
             self.front_frame_border = 15
             self.front_t = 3.175  # 1/8"
             self.middle_t = 5
@@ -328,18 +357,22 @@ class GlazingFrame(RaiBase):
 
     @inject_shortcuts
     def backing(self, content_w, content_h):
-        text = f"backing\ncontent {fmt_mmxmm(content_w, content_h)}\nwindow {fmt_mmxmm(self.window_w, self.window_h)}"
+        text = "\n".join([
+                "backing"
+                f"content {fmt_mmxmm(content_w, content_h)}"
+                f"art {fmt_mmxmm(self.art_w, self.art_h)}"
+        ])
         backing = Element.from_item(self.wall_builder(text).add(self.content_rectangle_path()))
 
         w = self.wall_builder("backing_etching").add(
-            Plain(self.window_w, text=mark("window_w")), Turn(90),
-            Plain(self.window_h, text=mark("window_h")), Turn(90),
-            Plain(self.window_w), Turn(90),
-            Plain(self.window_h), Close()
+            Plain(self.art_w, text=mark("art_w")), Turn(90),
+            Plain(self.art_h, text=mark("art_h")), Turn(90),
+            Plain(self.art_w), Turn(90),
+            Plain(self.art_h), Close()
         )
         delta = coord(
-            (content_w - self.window_w) / 2,
-            (content_h - self.window_h) / 2,
+            (content_w - self.art_w) / 2,
+            (content_h - self.art_h) / 2,
         )
         etching = Element.from_item(w, color=Color.ETCHING).translate(delta)
         return Element.union(self, [backing, etching])
@@ -348,15 +381,16 @@ class GlazingFrame(RaiBase):
     def front_frame(self, front_frame_border, front_frame_w, front_frame_h):
         # copied from split PhotoFrame.split front
         hypo = sqrt(2 * front_frame_border**2)
-        dm = Plain(self.dovetail_margin)
-        dove = hypo - 2 * self.dovetail_margin
+        dm_a = Plain(self.dovetail_margin_outer)
+        dm_b = Plain(self.dovetail_margin_inner)
+        dove = hypo - self.dovetail_margin_outer - self.dovetail_margin_inner
         assert dove >= 0
 
         # COUNTER: depth of cutouts based on thickness of sides.
         outer_edge = FRONT_TO_MIDDLE_FINGER_COUNTER
 
         # d is dovetail joints
-        top_dove = [dm, Edge(dove, FRONT_DOVETAIL), dm]
+        top_dove = [dm_a, Edge(dove, FRONT_DOVETAIL), dm_b]
         top_bottom = Element.from_item(
             self.wall_builder("front frame top/bottom").add(
                 Plain(self.front_middle_finger_margin),
@@ -365,11 +399,11 @@ class GlazingFrame(RaiBase):
                 Turn(90 + 45),
                 *top_dove, Turn(90 - 45),
                 Plain(self.window_w), Turn(90 - 45),
-                *top_dove, Close()
+                *reversed(top_dove), Close()
             )
         )
         # D is dovetail joints counterpart
-        side_dove = [dm, Edge(dove, FRONT_DOVETAIL_COUNTER), dm]
+        side_dove = [dm_a, Edge(dove, FRONT_DOVETAIL_COUNTER), dm_b]
         side = Element.from_item(
             self.wall_builder("front frame left/right").add(
                 Plain(self.front_middle_finger_margin),
@@ -378,7 +412,7 @@ class GlazingFrame(RaiBase):
                 Turn(90 + 45),
                 *side_dove, Turn(90 - 45),
                 Plain(self.window_h), Turn(90 - 45),
-                *side_dove,
+                *reversed(side_dove),
                 Close()
             )
         )
@@ -398,7 +432,7 @@ class GlazingFrame(RaiBase):
             render=[render],
             boxes=self,
             is_part=None,
-            #color=PILOT_LINE_COLOR,
+            color=PILOT_LINE_COLOR,
         )
 
     def v_groove(self, size=2):

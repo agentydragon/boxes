@@ -1,6 +1,11 @@
 """
 To run:
     scripts/boxes SkadisRoll --preset=demo
+
+
+TODO:
+    * Skadis reinforcers are incorrect (by 2cm when cut default)
+    * Cut bottom spacer just as ring to reduce friction
 """
 
 import logging
